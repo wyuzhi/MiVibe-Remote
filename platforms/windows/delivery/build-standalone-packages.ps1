@@ -193,8 +193,11 @@ $results = foreach ($productDefinition in $selectedProducts) {
   if (-not $setup) { throw "Missing setup for $($productDefinition.Id)" }
   $setupHash = Get-SHA256 $setup.FullName
   $checksumPath = "$($setup.FullName).sha256"
-  "$setupHash  $($setup.Name)" |
-    Set-Content -LiteralPath $checksumPath -Encoding ASCII
+  [IO.File]::WriteAllText(
+    $checksumPath,
+    "$setupHash  $($setup.Name)`n",
+    [Text.Encoding]::ASCII
+  )
   $setupSignature = Get-AuthenticodeSignature -LiteralPath $setup.FullName
   if (-not $AllowUnsignedCandidate -and $setupSignature.Status -ne 'Valid') {
     throw "$($productDefinition.Id) installer is unsigned"
