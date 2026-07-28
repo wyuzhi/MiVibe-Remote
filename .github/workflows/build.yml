@@ -17,6 +17,8 @@ jobs:
         working-directory: platforms/macos
     steps:
       - uses: actions/checkout@v4
+      - name: Install verification tools
+        run: brew install ripgrep
       - name: Show toolchain
         run: |
           swift --version
