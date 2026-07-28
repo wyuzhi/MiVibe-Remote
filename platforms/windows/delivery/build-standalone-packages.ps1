@@ -1,7 +1,6 @@
 ﻿[CmdletBinding()]
 param(
   [string] $Version = "0.1.0",
-  [ValidateSet("xiaomi", "t1", "v60")]
   [string[]] $Product = @("xiaomi"),
   [switch] $AllowUnsignedCandidate,
   [string] $PythonExecutable = "",
@@ -94,6 +93,10 @@ $productCatalog = @{
     Entry = "source\standalone\v60_main.py"
     OutputPrefix = "V60PenBridgeSetup"
   }
+}
+$unknownProducts = @($Product | Where-Object { -not $productCatalog.ContainsKey($_) })
+if ($unknownProducts.Count -gt 0) {
+  throw "Unsupported product: $($unknownProducts -join ', '). Expected xiaomi, t1, or v60."
 }
 $selectedProducts = @($Product | Select-Object -Unique | ForEach-Object {
   $productCatalog[$_]
