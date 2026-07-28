@@ -123,89 +123,89 @@ if ($LASTEXITCODE -ne 0) { throw "Automated tests failed: $LASTEXITCODE" }
 Reset-SafeDirectory $Stage (Join-Path $Project "build")
 Reset-SafeDirectory $Output (Join-Path $PSScriptRoot "out")
 
-foreach ($product in $selectedProducts) {
-  $productWork = Join-Path $Work $product.Id
+foreach ($productDefinition in $selectedProducts) {
+  $productWork = Join-Path $Work $productDefinition.Id
   $null = New-Item -ItemType Directory -Force -Path $productWork
   & $BuildPython -m PyInstaller `
     --noconfirm `
     --clean `
     --distpath $Dist `
     --workpath $productWork `
-    (Join-Path $Project ("source\" + $product.Spec))
-  if ($LASTEXITCODE -ne 0) { throw "$($product.Id) PyInstaller build failed: $LASTEXITCODE" }
+    (Join-Path $Project ("source\" + $productDefinition.Spec))
+  if ($LASTEXITCODE -ne 0) { throw "$($productDefinition.Id) PyInstaller build failed: $LASTEXITCODE" }
 }
 
-foreach ($product in $selectedProducts) {
-  $folder = Join-Path $Dist $product.Folder
-  $exe = Join-Path $folder $product.Exe
+foreach ($productDefinition in $selectedProducts) {
+  $folder = Join-Path $Dist $productDefinition.Folder
+  $exe = Join-Path $folder $productDefinition.Exe
   if (-not (Test-Path -LiteralPath $exe)) { throw "Missing built executable: $exe" }
   $leaks = @(Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object {
     $_.Extension -in @('.py', '.pyc', '.pyo', '.spec')
   })
-  if ($leaks.Count -gt 0) { throw "$($product.Id) package contains source files: $($leaks.FullName -join ', ')" }
+  if ($leaks.Count -gt 0) { throw "$($productDefinition.Id) package contains source files: $($leaks.FullName -join ', ')" }
   $archiveListing = (& $BuildPython -m PyInstaller.utils.cliutils.archive_viewer -r -b $exe 2>&1) -join "`n"
   if ($LASTEXITCODE -ne 0) { throw "Unable to inspect $exe" }
   if ($archiveListing -match '(?i)streaming[-_.]?voice[-_.]?input|input[-_.]?method|speech[-_.]?recogn') {
-    throw "$($product.Id) package contains input-method or speech-recognition code"
+    throw "$($productDefinition.Id) package contains input-method or speech-recognition code"
   }
   if ($archiveListing -match '(?i)customer_(entry|license)|\blicensing(?:[.\\/]|$)|hardened|nuitka') {
-    throw "$($product.Id) package contains licensing or anti-reversing code"
+    throw "$($productDefinition.Id) package contains licensing or anti-reversing code"
   }
-  if ($product.Id -eq 'xiaomi' -and $archiveListing -match 'bridges\.(t1|hanvon)') {
+  if ($productDefinition.Id -eq 'xiaomi' -and $archiveListing -match 'bridges\.(t1|hanvon)') {
     throw "Xiaomi package contains another hardware bridge"
   }
-  if ($product.Id -eq 't1' -and $archiveListing -match 'bridges\.(xiaomi|hanvon|audio\.audio_router)') {
+  if ($productDefinition.Id -eq 't1' -and $archiveListing -match 'bridges\.(xiaomi|hanvon|audio\.audio_router)') {
     throw "T1 package contains another bridge or virtual audio router"
   }
-  if ($product.Id -eq 'v60' -and $archiveListing -match 'bridges\.(xiaomi|t1|audio\.audio_router)') {
+  if ($productDefinition.Id -eq 'v60' -and $archiveListing -match 'bridges\.(xiaomi|t1|audio\.audio_router)') {
     throw "V60 package contains another bridge or virtual audio router"
   }
-  if ($product.Id -in @('t1','v60')) {
+  if ($productDefinition.Id -in @('t1','v60')) {
     $forbiddenFiles = @(Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object {
       $_.Name -match '(?i)vbcable|portaudio|sounddevice|numpy|frida|winrt'
     })
     if ($forbiddenFiles.Count -gt 0) {
-      throw "$($product.Id) package contains virtual-audio or Xiaomi-only files: $($forbiddenFiles.FullName -join ', ')"
+      throw "$($productDefinition.Id) package contains virtual-audio or Xiaomi-only files: $($forbiddenFiles.FullName -join ', ')"
     }
   }
   $signature = Get-AuthenticodeSignature -LiteralPath $exe
   if (-not $AllowUnsignedCandidate -and $signature.Status -ne 'Valid') {
-    throw "$($product.Id) executable is unsigned; use -AllowUnsignedCandidate only for local candidates"
+    throw "$($productDefinition.Id) executable is unsigned; use -AllowUnsignedCandidate only for local candidates"
   }
 }
 
 $SetupRoot = Join-Path $PSScriptRoot "standalone\setup"
-foreach ($product in $selectedProducts) {
-  $folder = Join-Path $Dist $product.Folder
+foreach ($productDefinition in $selectedProducts) {
+  $folder = Join-Path $Dist $productDefinition.Folder
   & $InnoCompiler `
     "/DAppVersion=$Version" `
     "/DVersionInfoVersion=$VersionInfoVersion" `
     "/DSourceDir=$folder" `
     "/DOutputDir=$Output" `
-    (Join-Path $SetupRoot $product.Setup)
-  if ($LASTEXITCODE -ne 0) { throw "$($product.Id) installer build failed: $LASTEXITCODE" }
+    (Join-Path $SetupRoot $productDefinition.Setup)
+  if ($LASTEXITCODE -ne 0) { throw "$($productDefinition.Id) installer build failed: $LASTEXITCODE" }
 }
 
-$results = foreach ($product in $selectedProducts) {
-  $setup = Get-ChildItem -LiteralPath $Output -File -Filter "$($product.OutputPrefix)-*.exe" |
+$results = foreach ($productDefinition in $selectedProducts) {
+  $setup = Get-ChildItem -LiteralPath $Output -File -Filter "$($productDefinition.OutputPrefix)-*.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
-  if (-not $setup) { throw "Missing setup for $($product.Id)" }
+  if (-not $setup) { throw "Missing setup for $($productDefinition.Id)" }
   $setupHash = Get-SHA256 $setup.FullName
   $checksumPath = "$($setup.FullName).sha256"
   "$setupHash  $($setup.Name)" |
     Set-Content -LiteralPath $checksumPath -Encoding ASCII
   $setupSignature = Get-AuthenticodeSignature -LiteralPath $setup.FullName
   if (-not $AllowUnsignedCandidate -and $setupSignature.Status -ne 'Valid') {
-    throw "$($product.Id) installer is unsigned"
+    throw "$($productDefinition.Id) installer is unsigned"
   }
   [pscustomobject]@{
-    Product = $product.Id
+    Product = $productDefinition.Id
     Setup = $setup.FullName
     Bytes = $setup.Length
     SHA256 = $setupHash
     Checksum = $checksumPath
-    ExecutableAuthenticode = (Get-AuthenticodeSignature -LiteralPath (Join-Path $Dist $product.Folder $product.Exe)).Status.ToString()
+    ExecutableAuthenticode = (Get-AuthenticodeSignature -LiteralPath (Join-Path $Dist $productDefinition.Folder $productDefinition.Exe)).Status.ToString()
     SetupAuthenticode = $setupSignature.Status.ToString()
   }
 }
