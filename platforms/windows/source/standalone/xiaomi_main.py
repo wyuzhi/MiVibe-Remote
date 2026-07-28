@@ -18,7 +18,7 @@ from tkinter import ttk
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 

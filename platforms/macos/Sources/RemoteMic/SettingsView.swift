@@ -110,6 +110,22 @@ struct SettingsView: View {
                     sidebarButton(section)
                 }
                 Spacer(minLength: 0)
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    VStack(spacing: 7) {
+                        Image(systemName: "power")
+                            .font(.system(size: 19, weight: .semibold))
+                        Text("退出应用")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("停止遥控器服务并完全退出 MiVibe Remote")
             }
             .padding(10)
         }

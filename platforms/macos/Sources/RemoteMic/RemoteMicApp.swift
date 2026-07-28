@@ -52,6 +52,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installTerminationSignalHandlers()
+        configureMainMenu()
         configureStatusItem()
         observeModel()
         model.startIfNeeded()
@@ -89,6 +90,23 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
 
     func menuWillOpen(_ menu: NSMenu) {
         refreshMenuStatus()
+    }
+
+    private func configureMainMenu() {
+        let mainMenu = NSMenu()
+        let applicationItem = NSMenuItem()
+        let applicationMenu = NSMenu()
+        let quitItem = NSMenuItem(
+            title: "退出 MiVibe Remote",
+            action: #selector(quit),
+            keyEquivalent: "q"
+        )
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.target = self
+        applicationMenu.addItem(quitItem)
+        applicationItem.submenu = applicationMenu
+        mainMenu.addItem(applicationItem)
+        NSApp.mainMenu = mainMenu
     }
 
     private func configureStatusItem() {
@@ -215,7 +233,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         let hostingController = NSHostingController(rootView: SettingsView(model: model))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 650),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
