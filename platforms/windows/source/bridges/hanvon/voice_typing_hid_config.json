@@ -1,0 +1,36 @@
+{
+  "click_enter_delay_ms": 80,
+  "debounce_ms": 250,
+  "mic_open_repeat_dynamic": 1,
+  "mic_open_delay_ms": 80,
+  "mic_session_keepalive_ms": 200,
+  "mic_session_warmup_ms": 1000,
+  "voice_shortcut_enabled": true,
+  "voice_hotkey": "Right Alt",
+  "voice_trigger_mode": "toggle",
+  "hid_keycodes": {
+    "23": "mic",
+    "19": "pageup",
+    "20": "pagedown"
+  },
+  "log_unknown": false,
+  "key_to_action": {
+    "mic": "right_alt",
+    "pageup": "tail_backspace",
+    "pagedown": "click_enter"
+  },
+  "listen_usage_pages": [
+    "0xff00",
+    "0xff01",
+    "0x000c",
+    "0x0001"
+  ],
+  "refresh_mic_before_pen_hotkey": true,
+  "keyboard_hotkey_mic_refresh": true,
+  "keyboard_hotkey_vk": "0xA5",
+  "keyboard_hotkey_poll_ms": 25,
+  "keyboard_hotkey_debounce_ms": 500,
+  "keyboard_hotkey_vks": [
+    "0xA5"
+  ]
+}

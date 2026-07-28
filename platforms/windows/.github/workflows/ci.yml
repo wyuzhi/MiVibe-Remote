@@ -1,0 +1,33 @@
+name: Windows checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Check public repository boundary
+        shell: pwsh
+        run: .\scripts\check-public-boundary.ps1
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile source
+        run: python -m compileall -q source
+      - name: Check undefined names
+        run: >
+          python -m ruff check
+          source/standalone/xiaomi_main.py
+          source/bridges/xiaomi
+          --select F
+      - name: Run tests
+        run: python -m unittest discover -s tests -p "test_*.py"

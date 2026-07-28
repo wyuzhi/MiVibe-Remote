@@ -1,0 +1,83 @@
+name: Build MiVibe Remote
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS app and DMG
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: platforms/macos
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: Run Swift tests
+        run: swift test
+      - name: Build and verify DMG
+        run: |
+          ./scripts/build-dmg.sh
+          ./scripts/verify-dmg.sh
+      - name: Upload macOS candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiVibe-Remote-macOS
+          path: |
+            platforms/macos/dist/MiVibe-Remote-*.dmg
+            platforms/macos/dist/MiVibe-Remote-*.dmg.sha256
+          if-no-files-found: error
+
+  windows:
+    name: Windows app and installer
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: platforms/windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            platforms/windows/requirements.txt
+            platforms/windows/requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Check undefined names
+        run: >
+          python -m ruff check
+          source/standalone/xiaomi_main.py
+          source/bridges/xiaomi
+          --select F
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+      - name: Build and test installer
+        shell: pwsh
+        run: >
+          .\delivery\build-standalone-packages.ps1
+          -Version 0.1.0
+          -Product xiaomi
+          -AllowUnsignedCandidate
+      - name: Upload Windows candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiVibe-Remote-Windows
+          path: |
+            platforms/windows/delivery/out/standalone/MiVibeRemoteSetup-*.exe
+            platforms/windows/delivery/out/standalone/MiVibeRemoteSetup-*.exe.sha256
+          if-no-files-found: error

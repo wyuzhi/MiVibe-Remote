@@ -1,0 +1,22 @@
+.DS_Store
+
+# macOS / Swift
+.build/
+DerivedData/
+dist/
+*.dmg
+*.pkg
+
+# Windows / Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+*.spec.bak
+
+# Local hardware state and logs
+*.log
+*.wav
+*.raw
+config.json
+keys_config.json

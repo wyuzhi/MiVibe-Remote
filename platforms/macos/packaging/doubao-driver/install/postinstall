@@ -1,0 +1,60 @@
+#!/bin/zsh
+set -euo pipefail
+
+TARGET_VOLUME="${3:-/}"
+DESTINATION="${TARGET_VOLUME%/}/Library/Audio/Plug-Ins/HAL/MiRemoteV2ch.driver"
+PLIST="$DESTINATION/Contents/Info.plist"
+BINARY="$DESTINATION/Contents/MacOS/MiRemoteV2ch"
+APP_DESTINATION="${TARGET_VOLUME%/}/Applications/MiVibe Remote.app"
+APP_PLIST="$APP_DESTINATION/Contents/Info.plist"
+APP_BINARY="$APP_DESTINATION/Contents/MacOS/RemoteMic"
+
+test -d "$DESTINATION"
+test -f "$PLIST"
+test -x "$BINARY"
+test "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = "com.hd838a.MiRemoteV2ch"
+test "$(/usr/bin/plutil -extract CFBundleName raw -o - "$PLIST")" = "MiRemoteV2ch"
+test -d "$APP_DESTINATION"
+test -f "$APP_PLIST"
+test -x "$APP_BINARY"
+test "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$APP_PLIST")" = "com.mivibe.remote"
+test "$(/usr/bin/plutil -extract LSMinimumSystemVersion raw -o - "$APP_PLIST")" = "26.0"
+test "$(/usr/bin/uname -m)" = "arm64"
+SYSTEM_MAJOR="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
+test "$SYSTEM_MAJOR" -ge 26
+
+/usr/sbin/chown -R root:wheel "$DESTINATION"
+/usr/bin/find "$DESTINATION" -type d -exec /bin/chmod 755 {} \;
+/usr/bin/find "$DESTINATION" -type f -exec /bin/chmod 644 {} \;
+/bin/chmod 755 "$BINARY"
+/usr/bin/codesign --verify --deep --strict "$DESTINATION"
+/usr/sbin/chown -R root:wheel "$APP_DESTINATION"
+/usr/bin/find "$APP_DESTINATION" -type d -exec /bin/chmod 755 {} \;
+/usr/bin/find "$APP_DESTINATION" -type f -exec /bin/chmod 644 {} \;
+/bin/chmod 755 "$APP_BINARY"
+/usr/bin/codesign --verify --deep --strict "$APP_DESTINATION"
+
+DRIVER_ARCHS="$(/usr/bin/lipo -archs "$BINARY")"
+APP_ARCHS="$(/usr/bin/lipo -archs "$APP_BINARY")"
+test "$DRIVER_ARCHS" = "arm64"
+test "$APP_ARCHS" = "arm64"
+/usr/bin/vtool -show-build "$BINARY" | /usr/bin/grep -q 'minos 26\.0'
+/usr/bin/vtool -show-build "$APP_BINARY" | /usr/bin/grep -q 'minos 26\.0'
+
+/usr/bin/killall coreaudiod
+
+CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console)"
+if [[ "$TARGET_VOLUME" != "/" ]]; then
+  print "已完成安装；请从目标磁盘的“应用程序”目录手动打开 MiVibe Remote。"
+elif [[ "$CONSOLE_USER" != "root" && "$CONSOLE_USER" != "loginwindow" ]]; then
+  CONSOLE_UID="$(/usr/bin/id -u "$CONSOLE_USER")"
+  /usr/bin/pkill -U "$CONSOLE_UID" -x RemoteMic 2>/dev/null || true
+  if /bin/launchctl asuser "$CONSOLE_UID" \
+    /usr/bin/sudo -u "$CONSOLE_USER" /usr/bin/open "$APP_DESTINATION"; then
+    print "已安装并启动 MiVibe Remote；请在状态栏打开设置并选择 MiRemoteV 2ch。"
+  else
+    print "已完成安装，但未能自动启动应用；请从“应用程序”手动打开 MiVibe Remote。"
+  fi
+else
+  print "已完成安装；登录桌面后请从“应用程序”打开 MiVibe Remote。"
+fi

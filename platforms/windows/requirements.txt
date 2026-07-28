@@ -1,0 +1,11 @@
+hidapi==0.15.0
+numpy==2.4.3
+sounddevice==0.5.5
+Pillow==12.2.0
+psutil==5.9.8
+pystray==0.19.5
+winrt-runtime==3.2.1
+winrt-Windows.Devices.Bluetooth==3.2.1
+winrt-Windows.Devices.Bluetooth.GenericAttributeProfile==3.2.1
+winrt-Windows.Devices.Enumeration==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
