@@ -42,7 +42,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 ## 支持的硬件
 
-- 小米蓝牙语音遥控器 2 Pro / RC003
+- 小米蓝牙语音遥控器 2 / 2 Pro / RC003
 - USB Vendor ID：`0x2717`
 - USB Product ID：`0x32B8`
 
