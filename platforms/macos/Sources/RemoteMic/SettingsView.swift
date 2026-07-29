@@ -195,9 +195,9 @@ struct SettingsView: View {
         GlassPanel {
             VStack(spacing: 14) {
                 VStack(spacing: 2) {
-                    Text("RC003")
+                    Text("遥控器 2")
                         .font(.headline)
-                    Text("语音遥控器")
+                    Text("小米蓝牙")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -335,13 +335,13 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             PageHeader(
                 title: "按键映射",
-                subtitle: "自定义 RC003 按键功能，并保留语音键的固定核心行为"
+                subtitle: "自定义小米遥控器按键功能，并保留语音键的固定核心行为"
             )
 
             GlassPanel {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Toggle("启用 RC003 自定义按键映射", isOn: Binding(
+                        Toggle("启用小米遥控器自定义按键映射", isOn: Binding(
                             get: { settings.customMappingEnabled },
                             set: { enabled in
                                 settings.customMappingEnabled = enabled
@@ -603,7 +603,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "权限与隐私",
-                    subtitle: "按顺序完成权限设置，确保 RC003 正常连接和发送按键"
+                    subtitle: "按顺序完成权限设置，确保小米遥控器正常连接和发送按键"
                 )
 
                 GlassEffectContainer(spacing: 14) {
@@ -617,7 +617,7 @@ struct SettingsView: View {
                                 index: 1,
                                 symbol: "antenna.radiowaves.left.and.right",
                                 title: "蓝牙",
-                                detail: "连接 RC003 并读取 ATVV 语音服务",
+                                detail: "连接小米遥控器并读取 ATVV 语音服务",
                                 state: bluetoothPermissionState,
                                 actionTitle: "打开蓝牙设置"
                             ) {
@@ -632,7 +632,7 @@ struct SettingsView: View {
                                 index: 2,
                                 symbol: "keyboard",
                                 title: "输入监控",
-                                detail: "读取 RC003 原始 HID 报告，并在兼容模式下抑制重复系统事件",
+                                detail: "只在小米遥控器设备层屏蔽原始事件，再发送一次自定义动作",
                                 state: inputMonitoringGranted ? .granted : .pending,
                                 actionTitle: "请求权限"
                             ) {
@@ -1031,6 +1031,30 @@ private struct UsageInstructionRow: View {
 }
 
 private struct RC003Photo: View {
+    private static let productImage: NSImage? = {
+        guard let url = Bundle.main.url(
+            forResource: "RemoteProduct",
+            withExtension: "png"
+        ) else { return nil }
+        return NSImage(contentsOf: url)
+    }()
+
+    var body: some View {
+        Group {
+            if let productImage = Self.productImage {
+                Image(nsImage: productImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .shadow(color: .black.opacity(0.24), radius: 8, y: 5)
+            } else {
+                RC003Placeholder()
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct RC003Placeholder: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
@@ -1044,38 +1068,14 @@ private struct RC003Photo: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: width * 0.28, style: .continuous)
-                            .stroke(.white.opacity(0.12), lineWidth: 1)
-                    }
-                    .shadow(color: .black.opacity(0.30), radius: 12, y: 7)
-
                 Circle()
                     .fill(.white.opacity(0.08))
                     .frame(width: width * 0.50)
-                    .overlay {
-                        Circle().stroke(.white.opacity(0.12), lineWidth: 1)
-                    }
                     .position(x: width * 0.50, y: height * 0.25)
-
-                ForEach([0.39, 0.48, 0.57], id: \.self) { row in
-                    HStack(spacing: width * 0.11) {
-                        Circle().fill(.white.opacity(0.10))
-                        Circle().fill(.white.opacity(0.10))
-                    }
-                    .frame(width: width * 0.42, height: height * 0.06)
-                    .position(x: width * 0.50, y: height * row)
-                }
-
-                Image(systemName: "mic.fill")
-                    .font(.system(size: width * 0.07, weight: .semibold))
-                    .foregroundStyle(.cyan)
-                    .position(x: width * 0.63, y: height * 0.10)
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 5)
-        .accessibilityHidden(true)
     }
 }
 

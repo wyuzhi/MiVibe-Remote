@@ -38,4 +38,4 @@ The Doubao compatibility design is informed by MiRemoteVoice: a side-by-side Bla
 
 ## Product imagery
 
-No Xiaomi product photo, upstream screenshot or upstream proprietary App Logo is bundled. The settings interface uses a code-drawn remote silhouette and a newly generated MiVibe icon, so the build does not depend on unclear product-image redistribution rights.
+No product photo, screenshot, or proprietary App Logo from either upstream repository is bundled. The current MiVibe App icon and the remote image used by the settings interface were supplied by the MiVibe Remote project maintainer for this project. Third-party product shapes, names, and marks depicted in those assets remain the property of their respective owners; their appearance does not imply endorsement.

@@ -27,6 +27,6 @@ MiVibe Remote 安装包不内嵌或再分发 VB-CABLE。首次安装时，用户
 
 运行和构建依赖包括 hidapi、NumPy、python-sounddevice、Pillow、psutil、pystray、WinRT Python projections 与 PyInstaller。准确版本见 `requirements.txt` 和 `requirements-dev.txt`；再分发时应保留这些软件各自要求的许可证与通知。
 
-## 未分发的商品照片
+## 产品图与应用图标
 
-开发阶段使用过的小米遥控器商品照片，但其再分发授权不够清晰，因此公开仓库、自动构建和官方 Release 都不包含该照片。
+当前 `MiVibeRemote.ico` 由 MiVibe Remote 项目维护者提供并授权用于本项目，不是从上游仓库导入的资产。图中出现的第三方产品外观、名称和标志仍归各自权利人所有，其出现不表示相关权利人对本项目的认可或合作。

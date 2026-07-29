@@ -76,32 +76,6 @@ enum RemoteButton: String, CaseIterable, Codable, Identifiable {
         Set(usages.compactMap { usageMap[$0] })
     }
 
-    var nativeEvent: RemoteNativeEvent? {
-        switch self {
-        case .ok: return .keyboard(keyCode: 36)
-        case .tv: return .keyboard(keyCode: 50)
-        case .home: return .keyboard(keyCode: 115)
-        case .right: return .keyboard(keyCode: 124)
-        case .left: return .keyboard(keyCode: 123)
-        case .down: return .keyboard(keyCode: 125)
-        case .up: return .keyboard(keyCode: 126)
-        case .menu: return .keyboard(keyCode: 110)
-        case .power: return .systemKey(type: 6)
-        case .volumeUp: return .systemKey(type: 0)
-        case .volumeDown: return .systemKey(type: 1)
-        case .back: return nil
-        }
-    }
-}
-
-enum RemoteNativeEvent: Equatable {
-    case keyboard(keyCode: UInt16)
-    case systemKey(type: Int32)
-}
-
-enum RemoteEventEdge: Equatable {
-    case down
-    case up
 }
 
 struct CustomKeyboardShortcut: Codable, Equatable {

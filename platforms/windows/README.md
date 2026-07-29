@@ -29,11 +29,11 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m unittest discover -s tests -v
-.\delivery\build-standalone-packages.ps1 -Version 0.1.2 -Product xiaomi -AllowUnsignedCandidate
+.\delivery\build-standalone-packages.ps1 -Version 0.1.3 -Product xiaomi -AllowUnsignedCandidate
 ```
 
 默认只构建 MiVibe Remote；生成的可执行文件和安装器分别为
-`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.2.exe`。`-Product` 参数仍可显式选择
+`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.3.exe`。`-Product` 参数仍可显式选择
 保留的其他上游独立产品，但它们不属于 MiVibe Remote 交付物。
 构建同时生成对应的 `.exe.sha256` 校验文件。
 

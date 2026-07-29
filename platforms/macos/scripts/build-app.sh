@@ -40,6 +40,7 @@ ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/COPYRIGHT.md" "$APP_DIR/Contents/Resources/COPYRIGHT.md"
 for icon_resource in \
   AppIcon.icns \
+  RemoteProduct.png \
   StatusIconTemplate.png \
   StatusIconTemplate@2x.png \
   StatusIconActiveTemplate.png \

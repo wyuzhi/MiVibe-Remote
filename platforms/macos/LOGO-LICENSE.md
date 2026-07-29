@@ -1,15 +1,12 @@
 # 无线麦 App Logo 许可
 
-> 上游历史记录：本许可只适用于 `HD838A/remote-mic-app` 的原始专有 Logo。该 Logo 未导入 MiVibe Remote，当前 `Resources/AppIcon.*` 是按 GPL-3.0-only 发布的新资产。
+> 上游历史记录：本许可只适用于 `HD838A/remote-mic-app` 的原始专有 Logo。该 Logo 未导入 MiVibe Remote，也不是当前 `Resources/AppIcon.*` 文件；当前 MiVibe 资产按 [COPYRIGHT.md](COPYRIGHT.md) 说明发布。
 
 Copyright (C) 2026 HD838A. All rights reserved.
 
 ## 适用范围
 
-本许可仅适用于以下品牌资产以及由它们生成或演绎的版本：
-
-- `Resources/AppIcon.png`；
-- `Resources/AppIcon.icns`。
+本许可仅适用于上游 `HD838A/remote-mic-app` 发布包中的原始品牌资产及其衍生版本，不适用于本仓库当前的 `Resources/AppIcon.png` 和 `Resources/AppIcon.icns`。
 
 上述品牌资产不适用本项目软件代码的 `GPL-3.0-only` 许可。菜单栏状态图标、程序代码和其他未在本节列出的资源不属于本许可的保护范围。
 

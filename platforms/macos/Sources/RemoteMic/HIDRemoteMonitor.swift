@@ -41,10 +41,9 @@ private func hidInputReport(
 
 final class HIDRemoteMonitor {
     private let settings: AppSettings
-    private let eventSuppressor = KeyboardEventSuppressor()
     private var manager: IOHIDManager?
     private var activeDevice: IOHIDDevice?
-    private var activeDeviceIsSeized = false
+    private var takeoverMode = HIDTakeoverMode.nativeOnly
     private var activeUsages = Set<UInt16>()
     private var repeatTimers: [UInt16: DispatchSourceTimer] = [:]
     private var gestureRecognizer = RemoteButtonGestureRecognizer()
@@ -54,6 +53,8 @@ final class HIDRemoteMonitor {
     private(set) var status = "按键映射未启用"
     var onStatus: ((String) -> Void)?
     var onActiveButtons: ((Set<RemoteButton>) -> Void)?
+    var ensureHardwareSuppression: (() -> Bool)?
+    var shouldInjectInDeviceSuppressedMode: ((RemoteButton) -> Bool)?
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -96,9 +97,6 @@ final class HIDRemoteMonitor {
             return
         }
 
-        let suppressionReady = eventSuppressor.start()
-        AppLogger.shared.write("HID FILTER ready=\(suppressionReady)")
-
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         let matching = [
             kIOHIDVendorIDKey as String: 0x2717,
@@ -123,13 +121,12 @@ final class HIDRemoteMonitor {
                 CFRunLoopGetMain(),
                 CFRunLoopMode.commonModes.rawValue
             )
-            eventSuppressor.stop()
             updateStatus("无法读取遥控器（错误 \(result)）")
             return
         }
         self.manager = manager
         startPermissionMonitor()
-        updateStatus("等待 RC003 按键设备")
+        updateStatus("等待小米遥控器按键设备")
         AppLogger.shared.write("HID START mode=adaptive")
     }
 
@@ -141,11 +138,10 @@ final class HIDRemoteMonitor {
         resetGestureRecognition()
         activeUsages.removeAll()
         onActiveButtons?([])
-        eventSuppressor.stop()
         if let activeDevice {
             IOHIDDeviceClose(activeDevice, IOOptionBits(kIOHIDOptionsTypeNone))
             self.activeDevice = nil
-            activeDeviceIsSeized = false
+            takeoverMode = .nativeOnly
         }
         guard let manager else { return }
         IOHIDManagerUnscheduleFromRunLoop(
@@ -159,7 +155,7 @@ final class HIDRemoteMonitor {
 
     fileprivate func deviceDidMatch(result: IOReturn, device: IOHIDDevice) {
         guard result == kIOReturnSuccess else {
-            updateStatus("RC003 HID 打开失败")
+            updateStatus("小米遥控器 HID 打开失败")
             return
         }
         guard activeDevice == nil else { return }
@@ -169,15 +165,16 @@ final class HIDRemoteMonitor {
         )
         if seizeResult == kIOReturnSuccess {
             activeDevice = device
-            activeDeviceIsSeized = true
-            updateStatus("RC003 按键映射已连接（独占模式）")
+            takeoverMode = .exclusive
+            updateStatus("小米遥控器按键映射已连接（独占模式）")
             AppLogger.shared.write("HID CONNECTED mode=seized")
             return
         }
 
+        let hardwareSuppressionApplied = ensureHardwareSuppression?() ?? false
         let monitorResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         guard monitorResult == kIOReturnSuccess else {
-            updateStatus("无法读取 RC003（错误 \(monitorResult)）")
+            updateStatus("无法读取小米遥控器（错误 \(monitorResult)）")
             AppLogger.shared.write(
                 "HID DEVICE OPEN FAILED seize=\(seizeResult) monitor=\(monitorResult)"
             )
@@ -185,23 +182,32 @@ final class HIDRemoteMonitor {
         }
 
         activeDevice = device
-        activeDeviceIsSeized = false
-        let suffix = eventSuppressor.isRunning ? "兼容模式" : "兼容模式；系统原动作可能保留"
-        updateStatus("RC003 按键映射已连接（\(suffix)）")
-        AppLogger.shared.write("HID CONNECTED mode=monitored seize_error=\(seizeResult)")
+        takeoverMode = HIDTakeoverMode.resolve(
+            seized: false,
+            hardwareSuppressionApplied: hardwareSuppressionApplied
+        )
+        if takeoverMode.canInjectMappedActions {
+            updateStatus("小米遥控器按键映射已连接（设备级接管）")
+        } else {
+            updateStatus("无法安全接管小米遥控器；按键由 macOS 原生处理")
+        }
+        AppLogger.shared.write(
+            "HID CONNECTED mode=monitored seize_error=\(seizeResult) " +
+                "hardware_suppression=\(hardwareSuppressionApplied)"
+        )
     }
 
     fileprivate func deviceDidRemove(device: IOHIDDevice) {
         guard let activeDevice, CFEqual(activeDevice, device) else { return }
         IOHIDDeviceClose(activeDevice, IOOptionBits(kIOHIDOptionsTypeNone))
         self.activeDevice = nil
-        activeDeviceIsSeized = false
+        takeoverMode = .nativeOnly
         activeUsages.removeAll()
         onActiveButtons?([])
         repeatTimers.values.forEach { $0.cancel() }
         repeatTimers.removeAll()
         resetGestureRecognition()
-        updateStatus("RC003 按键设备已断开")
+        updateStatus("小米遥控器按键设备已断开")
         AppLogger.shared.write("HID DISCONNECTED")
     }
 
@@ -218,13 +224,11 @@ final class HIDRemoteMonitor {
         let released = activeUsages.subtracting(usages)
         activeUsages = usages
         onActiveButtons?(RemoteButton.buttons(for: usages))
+        guard takeoverMode.canInjectMappedActions else { return }
 
         for usage in pressed.sorted() {
             guard let button = RemoteButton.usageMap[usage] else { continue }
-            if !activeDeviceIsSeized {
-                eventSuppressor.arm(button: button, edge: .down)
-            }
-
+            guard shouldInjectMappedAction(for: button) else { continue }
             let recognizesDoubleClick = settings.configuredAction(
                 for: button,
                 trigger: .doubleClick
@@ -251,11 +255,9 @@ final class HIDRemoteMonitor {
         }
 
         for usage in released {
-            if !activeDeviceIsSeized, let button = RemoteButton.usageMap[usage] {
-                eventSuppressor.arm(button: button, edge: .up)
-            }
             repeatTimers.removeValue(forKey: usage)?.cancel()
             if let button = RemoteButton.usageMap[usage] {
+                guard shouldInjectMappedAction(for: button) else { continue }
                 guard processGestureCommands(gestureRecognizer.release(button)) else { return }
             }
         }
@@ -288,9 +290,6 @@ final class HIDRemoteMonitor {
             guard self.runtimePermissionsAreValid() else {
                 self.releaseForRevokedPermissions()
                 return
-            }
-            if !self.activeDeviceIsSeized {
-                self.eventSuppressor.arm(button: button, edge: .down)
             }
             if !KeyboardInjector.send(action, shortcut: self.settings.shortcut(for: button)) {
                 self.releaseForRevokedPermissions()
@@ -364,6 +363,17 @@ final class HIDRemoteMonitor {
             "HID BUTTON button=\(button.rawValue) trigger=\(trigger.rawValue) action=\(configured.action.rawValue)"
         )
         return true
+    }
+
+    private func shouldInjectMappedAction(for button: RemoteButton) -> Bool {
+        switch takeoverMode {
+        case .exclusive:
+            return true
+        case .deviceSuppressed:
+            return shouldInjectInDeviceSuppressedMode?(button) ?? false
+        case .nativeOnly:
+            return false
+        }
     }
 
     private func resetGestureRecognition() {

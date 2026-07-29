@@ -124,6 +124,21 @@ struct RemoteButtonsTests {
         ))
     }
 
+    @Test func deletePostsDirectlyToTheFrontmostApplication() {
+        var globalPost: (CGKeyCode, CGEventFlags)?
+        var frontmostPost: (CGKeyCode, CGEventFlags)?
+
+        #expect(KeyboardInjector.send(
+            .deleteBackward,
+            accessibilityTrusted: { true },
+            keyPoster: { globalPost = ($0, $1) },
+            frontmostKeyPoster: { frontmostPost = ($0, $1) }
+        ))
+        #expect(globalPost == nil)
+        #expect(frontmostPost?.0 == 51)
+        #expect(frontmostPost?.1 == [])
+    }
+
     @Test func missingApplicationIsHandledWithoutPermissionFailure() {
         #expect(KeyboardInjector.send(.openCodex, applicationURL: { _ in nil }))
     }
@@ -367,11 +382,4 @@ struct RemoteButtonsTests {
         #expect(settings.customMappingEnabled)
     }
 
-    @Test func nativeEventDescriptorsCoverPotentialDuplicateEvents() {
-        #expect(RemoteButton.up.nativeEvent == .keyboard(keyCode: 126))
-        #expect(RemoteButton.ok.nativeEvent == .keyboard(keyCode: 36))
-        #expect(RemoteButton.menu.nativeEvent == .keyboard(keyCode: KeyboardInjector.contextualMenuKeyCode))
-        #expect(RemoteButton.volumeUp.nativeEvent == .systemKey(type: 0))
-        #expect(RemoteButton.back.nativeEvent == nil)
-    }
 }

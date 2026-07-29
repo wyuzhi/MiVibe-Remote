@@ -8,7 +8,7 @@
 
 - 运行系统：macOS 26 或更高版本；
 - 架构：Apple Silicon `arm64`；
-- 目标遥控器：小米蓝牙遥控器 2 Pro / RC003；
+- 目标遥控器：小米蓝牙遥控器 2；本机 macOS 内部型号显示为 RC001；
 - HID 标识：Vendor ID `0x2717`、Product ID `0x32B8`；
 - Swift 工具链：Swift 6.2，源码以 Swift 5 语言模式编译；
 - 发布签名：应用默认使用带固定 designated requirement 的 ad-hoc 签名；仅在显式传入有效签名身份时使用该身份。驱动使用 ad-hoc 签名，PKG 未使用 Installer 证书签名，当前未公证。
@@ -21,14 +21,13 @@
 | --- | --- |
 | `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、左键设置窗口、右键菜单、关于与版本菜单项、Sparkle 手动更新入口 |
 | `SettingsView.swift` | macOS 26 Liquid Glass 设置界面、状态展示、音频选择、按键映射和权限入口 |
-| `BridgeAppModel.swift` | 蓝牙、音频、HID、Fn 映射和 UI 状态的协调层 |
+| `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex 听写和 UI 状态的协调层 |
 | `XiaomiBluetoothBridge.swift` | CoreBluetooth 扫描、连接、能力协商、语音会话和自动重连 |
 | `ATVVProtocol.swift` | ATVV 命令、能力解析、IMA/DVI ADPCM 解码、帧累积与 PCM 后处理 |
 | `AudioOutput.swift` | CoreAudio 输出设备枚举和 16 kHz 单声道语音写入 |
-| `HIDRemoteMonitor.swift` | RC003 原始 HID 报告、独占/兼容模式、按键重复和活动状态 |
-| `KeyboardEventSuppressor.swift` | 兼容模式下对同一遥控器原生系统事件的短时抑制 |
+| `HIDRemoteMonitor.swift` | 小米遥控器原始 HID 报告、安全接管、按键重复和活动状态 |
+| `RemoteKeyHardwareSuppressor.swift` | 只匹配硬件 ID `0x2717:0x32B8`，在设备层屏蔽原始系统按键，并在退出时恢复 |
 | `KeyboardInjector.swift` | 键盘、媒体键和预置应用启动动作 |
-| `RemoteVoiceFunctionMapper.swift` | 只对 RC003 把语音键的 F5 usage 映射为 Fn/Globe，并在退出时恢复 |
 | `AppSettings.swift` | 音频设备、增益、HID 开关、按键映射和外设标识持久化 |
 
 ## 蓝牙与 ATVV
@@ -57,7 +56,7 @@ ATVV 通道为：
 
 `VirtualAudioOutput` 使用 `AVAudioEngine` 和 `AVAudioPlayerNode`，内部格式固定为 16 kHz、单声道、Float32。应用枚举所有具有输出声道的 CoreAudio 设备，并把语音直接写入用户选择的设备，不修改系统默认输入或输出。
 
-测试音同样只在内存中生成。只有音频设备已经配置、RC003 未在传输语音且没有其他测试音播放时才允许发送；真实语音开始或设备重新配置时会取消测试音，避免阻塞语音缓冲。
+测试音同样只在内存中生成。只有音频设备已经配置、小米遥控器未在传输语音且没有其他测试音播放时才允许发送；真实语音开始或设备重新配置时会取消测试音，避免阻塞语音缓冲。
 
 ## 豆包兼容驱动
 
@@ -76,7 +75,9 @@ ATVV 通道为：
 
 自定义按键映射默认关闭。启用后必须同时具备输入监控和辅助功能权限，否则 HID 处理失败关闭。
 
-`HIDRemoteMonitor` 首先尝试独占打开 RC003。若 macOS 拒绝独占，则退回非独占监听，并由 `KeyboardEventSuppressor` 在收到 RC003 原始报告后的 180 毫秒窗口内抑制匹配的原生系统事件。合成事件带有独立标记，不会被再次抑制。
+`HIDRemoteMonitor` 首先尝试独占打开小米遥控器。若 macOS 拒绝独占，`RemoteKeyHardwareSuppressor` 会调用系统自带 `hidutil` 设置设备级 `UserKeyMapping`，只匹配 Vendor ID `0x2717`、Product ID `0x32B8` 的目标设备。方向、Return 和音量等标准动作由设备直接交给 macOS，获得原生的快速连点和长按重复；返回键使用非标准 usage `0xF1`，不会产生 macOS 键盘事件，必须在原始按下报告到达时由应用把退格事件直接投递给当前前台应用进程，避开全局 CGEvent 队列。打开应用、切换应用、自定义快捷键和带双击/长按配置的按键也由应用执行。MacBook 自带键盘和其他键盘不会被修改。
+
+设备级映射会保留原有映射备份。关闭自定义映射或正常退出应用时立即恢复；应用异常退出后，下次启动会继续使用持久化备份，避免把应用自己的规则误当成用户原始设置。若独占和设备级映射都失败，应用会停止发送自定义动作，让 macOS 原生处理按键，避免重复输入。
 
 默认映射为：
 
@@ -92,13 +93,13 @@ ATVV 通道为：
 
 用户还可以选择系统静音、播放/暂停，或打开 Codex、Claude、cmux、微信、Cursor、Xcode、Slack、企业微信、网易云音乐、Chrome、Safari 和 Zed。选择器只显示当前已安装的预置应用，但会保留后来被卸载的已有映射；应用启动动作不会重复创建实例。
 
-方向、返回和音量键支持长按重复；打开应用动作不重复。普通实体按键活动状态会发布到 SwiftUI，用于高亮遥控器示意图和定位映射行。
+方向、返回和音量等标准动作由 macOS 原生处理长按重复；仅在独占模式下由应用生成重复事件。打开应用动作不重复。普通实体按键活动状态会发布到 SwiftUI，用于高亮遥控器示意图和定位映射行。
 
-## 语音键 Fn 映射
+## 语音键与 Codex 听写
 
-RC003 的语音键以键盘 F5（usage page `0x07`、usage `0x3E`）出现。`RemoteVoiceFunctionMapper` 只匹配 RC003 的 Vendor ID/Product ID，并把该 usage 映射为 Apple vendor top-case Fn/Globe（usage page `0xFF`、usage `0x03`）。
+小米遥控器开始发送 ATVV 音频时，应用按下 Codex 的 `⌃⇧D`；语音停止后释放快捷键。设备级按键屏蔽同时覆盖遥控器语音键对应的 F5 usage，避免 F5 原生动作进入前台应用，但不会影响遥控器固件启动 ATVV 音频。
 
-应用启动或蓝牙 ready 时应用映射；语音流开始和结束通过 `VoiceFunctionKeyLatch` 保证每个会话只产生一次按下和一次释放。应用退出时恢复启动前该 source usage 的映射，同时保留运行期间其他来源的映射变化。
+启用自定义按键映射时应用设备级屏蔽；语音流开始和结束通过 `VoiceFunctionKeyLatch` 保证每个会话只产生一次 Codex 快捷键按下和一次释放。关闭自定义映射或退出应用时恢复启动前的目标按键映射，同时保留运行期间其他来源的映射变化。
 
 ## 菜单栏与窗口
 
@@ -127,7 +128,7 @@ xcrun swift test
 ./scripts/verify-app.sh
 ```
 
-`scripts/test.sh` 运行 36 项协议/策略自检并编译完整应用。当前 Swift Testing 测试为 61 项，覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、Fn 映射和测试音。
+`scripts/test.sh` 运行协议/策略自检并编译完整应用。Swift Testing 覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、小米遥控器设备级屏蔽、Codex 听写和测试音。
 
 构建并启动应用：
 
