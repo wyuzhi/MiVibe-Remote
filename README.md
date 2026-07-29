@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  把小米蓝牙语音遥控器 2 Pro（RC003）变成 macOS 和 Windows 上的 Vibe Coding 控制器。
+  把小米蓝牙语音遥控器 2 / 2 Pro（RC003）变成 macOS 和 Windows 上的 Vibe Coding 控制器。
 </p>
 
 <p align="center">
