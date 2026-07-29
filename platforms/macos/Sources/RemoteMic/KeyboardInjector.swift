@@ -15,6 +15,7 @@ enum KeyboardInjector {
     static let contextualMenuKeyCode: CGKeyCode = 110
     static let codexDictationKeyCode: CGKeyCode = 2
     static let codexDictationFlags: CGEventFlags = [.maskControl, .maskShift]
+    private static let eventSource = CGEventSource(stateID: .hidSystemState)
 
     static var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
@@ -52,7 +53,10 @@ enum KeyboardInjector {
         },
         applicationOpener: ApplicationOpener = openApplication,
         accessibilityTrusted: () -> Bool = { isAccessibilityTrusted },
-        keyPoster: KeyPoster = { postKey(code: $0, flags: $1) }
+        keyPoster: KeyPoster = { postKey(code: $0, flags: $1) },
+        frontmostKeyPoster: KeyPoster = {
+            postKeyToFrontmostApplication(code: $0, flags: $1)
+        }
     ) -> Bool {
         guard action != .disabled else { return true }
         if let application = action.presetApplication {
@@ -85,7 +89,10 @@ enum KeyboardInjector {
         case .arrowRight:
             keyPoster(124, [])
         case .deleteBackward:
-            keyPoster(51, [])
+            // Back arrives through MiVibe rather than the native keyboard
+            // stack. Posting directly to the foreground process avoids the
+            // extra global CGEvent queue that makes consecutive deletes lag.
+            frontmostKeyPoster(51, [])
         case .showDesktop:
             keyPoster(103, .maskSecondaryFn)
         case .contextMenu:
@@ -146,7 +153,7 @@ enum KeyboardInjector {
     }
 
     private static func postKey(code: CGKeyCode, flags: CGEventFlags = []) {
-        guard let source = CGEventSource(stateID: .hidSystemState),
+        guard let source = eventSource,
               let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)
         else { return }
@@ -158,12 +165,40 @@ enum KeyboardInjector {
         up.post(tap: .cghidEventTap)
     }
 
+    private static func postKeyToFrontmostApplication(
+        code: CGKeyCode,
+        flags: CGEventFlags = []
+    ) {
+        guard let processID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let source = eventSource,
+              let down = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: code,
+                  keyDown: true
+              ),
+              let up = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: code,
+                  keyDown: false
+              )
+        else {
+            postKey(code: code, flags: flags)
+            return
+        }
+        down.flags = flags
+        up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        down.postToPid(processID)
+        up.postToPid(processID)
+    }
+
     private static func postKeyState(
         code: CGKeyCode,
         flags: CGEventFlags,
         isDown: Bool
     ) -> Bool {
-        guard let source = CGEventSource(stateID: .hidSystemState),
+        guard let source = eventSource,
               let event = CGEvent(
                   keyboardEventSource: source,
                   virtualKey: code,

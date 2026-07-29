@@ -22,6 +22,7 @@ test -f "$APP/Contents/Resources/StatusIconTemplate.png"
 test -f "$APP/Contents/Resources/StatusIconTemplate@2x.png"
 test -f "$APP/Contents/Resources/StatusIconActiveTemplate.png"
 test -f "$APP/Contents/Resources/StatusIconActiveTemplate@2x.png"
+test -f "$APP/Contents/Resources/RemoteProduct.png"
 test -f "$APP/Contents/Resources/虚拟麦克风说明.md"
 
 test "$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = \
@@ -37,7 +38,7 @@ ARCHS="$(lipo -archs "$BINARY")"
 test "$ARCHS" = "arm64"
 xcrun vtool -show-build "$BINARY" | rg -q 'minos 26\.0'
 
-EXPECTED_APP_FILES=$'Contents/Info.plist\nContents/MacOS/RemoteMic\nContents/Resources/AppIcon.icns\nContents/Resources/COPYRIGHT.md\nContents/Resources/LICENSE.md\nContents/Resources/README.md\nContents/Resources/StatusIconActiveTemplate.png\nContents/Resources/StatusIconActiveTemplate@2x.png\nContents/Resources/StatusIconTemplate.png\nContents/Resources/StatusIconTemplate@2x.png\nContents/Resources/THIRD_PARTY_NOTICES.md\nContents/Resources/虚拟麦克风说明.md\nContents/_CodeSignature/CodeResources'
+EXPECTED_APP_FILES=$'Contents/Info.plist\nContents/MacOS/RemoteMic\nContents/Resources/AppIcon.icns\nContents/Resources/COPYRIGHT.md\nContents/Resources/LICENSE.md\nContents/Resources/README.md\nContents/Resources/RemoteProduct.png\nContents/Resources/StatusIconActiveTemplate.png\nContents/Resources/StatusIconActiveTemplate@2x.png\nContents/Resources/StatusIconTemplate.png\nContents/Resources/StatusIconTemplate@2x.png\nContents/Resources/THIRD_PARTY_NOTICES.md\nContents/Resources/虚拟麦克风说明.md\nContents/_CodeSignature/CodeResources'
 while IFS= read -r expected_file; do
   test -f "$APP/$expected_file"
 done <<< "$EXPECTED_APP_FILES"

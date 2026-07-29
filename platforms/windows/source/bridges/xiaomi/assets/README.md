@@ -1,7 +1,5 @@
-# 小米遥控器照片资源
+# MiVibe Remote 图像资源
 
-设置界面默认绘制原创的可点击遥控器示意图，不需要产品照片。
+`MiVibeRemote.ico` 是 Windows 应用和安装程序图标，由 MiVibe Remote 项目维护者提供并授权用于本项目。
 
-开发者仍可以在本地放入名为 `xiaomi-bluetooth-remote-2-pro-front.jpg` 的正面照片；界面会按源码中的坐标显示可点击按键。公开仓库没有包含原开发阶段使用的商品照片，因为其再分发授权不够清晰。
-
-不要把来源不明的电商图片提交到 Pull Request。
+不要把来源不明的电商图片或第三方上游专有品牌资产提交到 Pull Request。

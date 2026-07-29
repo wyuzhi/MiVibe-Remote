@@ -11,7 +11,7 @@ xcrun swiftc \
   "$ROOT/Sources/RemoteMic/RemoteButtons.swift" \
   "$ROOT/Sources/RemoteMic/AppSettings.swift" \
   "$ROOT/Sources/RemoteMic/VoiceFunctionKeyLatch.swift" \
-  "$ROOT/Sources/RemoteMic/RemoteVoiceFunctionMapper.swift" \
+  "$ROOT/Sources/RemoteMic/RemoteKeyHardwareSuppressor.swift" \
   "$ROOT/Sources/RemoteMic/AppLogger.swift" \
   "$ROOT/Sources/RemoteMic/TestTone.swift" \
   "$ROOT/Tests/SelfTest/main.swift" \

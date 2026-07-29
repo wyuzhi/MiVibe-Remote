@@ -192,13 +192,6 @@ check(
     "verified RC003 usage table"
 )
 check(
-    RemoteButton.up.nativeEvent == .keyboard(keyCode: 126) &&
-        RemoteButton.ok.nativeEvent == .keyboard(keyCode: 36) &&
-        RemoteButton.volumeUp.nativeEvent == .systemKey(type: 0) &&
-        RemoteButton.back.nativeEvent == nil,
-    "native duplicate-event descriptors"
-)
-check(
     !HIDPermissionGate.canMonitor(
         mappingEnabled: true,
         inputMonitoringGranted: false,
@@ -273,44 +266,55 @@ check(
 )
 _ = voiceFunctionKeyLatch.transition(streaming: false)
 
-let unrelatedMapping = HIDUsageMapping(source: 0x0000_0007_0000_0004, destination: 0x0000_0007_0000_0005)
-let staleVoiceMapping = HIDUsageMapping(
-    source: RemoteVoiceFunctionMappingPolicy.remoteVoiceKey.source,
-    destination: 0x0000_0007_0000_00E1
+let unrelatedMapping = HIDUsageMapping(
+    source: 0x0000_0007_0000_0004,
+    destination: 0x0000_0007_0000_0005
 )
-let hardwareVoiceMappings = RemoteVoiceFunctionMappingPolicy.applying(
-    to: [unrelatedMapping, staleVoiceMapping]
-)
-check(
-    hardwareVoiceMappings == [
-        unrelatedMapping,
-        RemoteVoiceFunctionMappingPolicy.remoteVoiceKey,
-    ],
-    "RC003 hardware voice mapping replaces only F5 and preserves unrelated mappings"
+let leftSource = RemoteKeyHardwareSuppressionPolicy.usage(RemoteButton.left.hidUsage)
+let staleLeftMapping = HIDUsageMapping(source: leftSource, destination: 0x0000_0007_0000_00E1)
+let hardwareKeyMappings = RemoteKeyHardwareSuppressionPolicy.applying(
+    to: [unrelatedMapping, staleLeftMapping],
+    actions: AppSettings.vibeCodingBindings,
+    buttonsWithSecondaryActions: []
 )
 check(
-    RemoteVoiceFunctionMappingPolicy.applying(to: hardwareVoiceMappings) == hardwareVoiceMappings,
-    "RC003 hardware voice mapping is idempotent"
+    hardwareKeyMappings.contains(unrelatedMapping) &&
+        !hardwareKeyMappings.contains(staleLeftMapping) &&
+        !hardwareKeyMappings.contains { $0.source == leftSource } &&
+        hardwareKeyMappings.contains(HIDUsageMapping(
+            source: RemoteKeyHardwareSuppressionPolicy.usage(RemoteButton.back.hidUsage),
+            destination: RemoteKeyHardwareSuppressionPolicy.noEventDestination
+        )),
+    "RC003 hardware suppression replaces target keys and preserves unrelated mappings"
+)
+check(
+    RemoteKeyHardwareSuppressionPolicy.applying(
+        to: hardwareKeyMappings,
+        actions: AppSettings.vibeCodingBindings,
+        buttonsWithSecondaryActions: []
+    ) == hardwareKeyMappings,
+    "RC003 hardware suppression is idempotent"
 )
 let changedUnrelatedMapping = HIDUsageMapping(
     source: unrelatedMapping.source,
     destination: 0x0000_0007_0000_0006
 )
 check(
-    RemoteVoiceFunctionMappingPolicy.restoring(
-        originalVoiceMapping: staleVoiceMapping,
-        in: [changedUnrelatedMapping, RemoteVoiceFunctionMappingPolicy.remoteVoiceKey]
-    ) == [changedUnrelatedMapping, staleVoiceMapping] &&
-        RemoteVoiceFunctionMappingPolicy.restoring(
-            originalVoiceMapping: nil,
-            in: [changedUnrelatedMapping, RemoteVoiceFunctionMappingPolicy.remoteVoiceKey]
-        ) == [changedUnrelatedMapping],
-    "RC003 hardware voice mapping restore preserves unrelated runtime changes"
+    RemoteKeyHardwareSuppressionPolicy.restoring(
+        originalTargetMappings: [staleLeftMapping],
+        in: hardwareKeyMappings.filter { $0 != unrelatedMapping } + [changedUnrelatedMapping]
+    ) == [changedUnrelatedMapping, staleLeftMapping],
+    "RC003 hardware suppression restore preserves unrelated runtime changes"
 )
 check(
-    HIDUsageMapping(property: RemoteVoiceFunctionMappingPolicy.remoteVoiceKey.property) ==
-        RemoteVoiceFunctionMappingPolicy.remoteVoiceKey,
-    "RC003 hardware voice mapping property round-trips"
+    HIDUsageMapping(property: staleLeftMapping.property) == staleLeftMapping,
+    "RC003 hardware suppression property round-trips"
+)
+check(
+    HIDTakeoverMode.resolve(seized: true, hardwareSuppressionApplied: false) == .exclusive &&
+        HIDTakeoverMode.resolve(seized: false, hardwareSuppressionApplied: true) == .deviceSuppressed &&
+        !HIDTakeoverMode.nativeOnly.canInjectMappedActions,
+    "RC003 takeover policy fails closed"
 )
 
 check(

@@ -24,6 +24,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private var voiceFunctionKeyLatch = VoiceFunctionKeyLatch()
     private var voiceStopWorkItem: DispatchWorkItem?
     private var voiceStopGeneration: UInt64 = 0
+    private let keyHardwareSuppressor = RemoteKeyHardwareSuppressor()
     private lazy var bluetoothBridge = XiaomiBluetoothBridge(settings: settings, delegate: self)
     private lazy var hidMonitor: HIDRemoteMonitor = {
         let monitor = HIDRemoteMonitor(settings: settings)
@@ -32,6 +33,18 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         }
         monitor.onActiveButtons = { [weak self] buttons in
             self?.activeRemoteButtons = buttons
+        }
+        monitor.ensureHardwareSuppression = { [weak self] in
+            guard let self else { return false }
+            return self.keyHardwareSuppressor.apply(settings: self.settings)
+        }
+        monitor.shouldInjectInDeviceSuppressedMode = { [weak self] button in
+            guard let self else { return false }
+            return RemoteKeyHardwareSuppressionPolicy.requiresApplicationDelivery(
+                button: button,
+                action: self.settings.action(for: button),
+                hasSecondaryActions: self.settings.hasSecondaryAction(for: button)
+            )
         }
         return monitor
     }()
@@ -87,6 +100,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         bluetoothBridge.stop()
         updateVoiceFunctionKeyState(streaming: false)
         hidMonitor.stop()
+        keyHardwareSuppressor.restore()
         audioOutput.stop()
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
@@ -280,7 +294,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             isPlaying: isPlayingTestTone
         ) else {
             if isStreaming {
-                testToneStatus = "RC003 语音进行中，已拒绝测试音"
+                testToneStatus = "小米遥控器语音进行中，已拒绝测试音"
                 AppLogger.shared.write("AUDIO TEST_TONE rejected_streaming")
             } else if isPlayingTestTone {
                 testToneStatus = "测试音正在播放中"
@@ -324,6 +338,17 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     func applyHIDSettings() {
         requestNextHIDPermissionIfNeeded()
+        hidMonitor.stop()
+        let canSafelyMap = HIDPermissionGate.canMonitor(
+            mappingEnabled: settings.customMappingEnabled,
+            inputMonitoringGranted: HIDRemoteMonitor.isInputMonitoringGranted,
+            accessibilityGranted: KeyboardInjector.isAccessibilityTrusted
+        )
+        if canSafelyMap {
+            _ = keyHardwareSuppressor.apply(settings: settings)
+        } else {
+            keyHardwareSuppressor.restore()
+        }
         hidMonitor.start()
         hidStatus = hidMonitor.status
     }
@@ -384,7 +409,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func bluetoothBridgeDidStartVoice(_ bridge: XiaomiBluetoothBridge) {
-        cancelTestToneIfNeeded(statusMessage: "RC003 语音进行中，已拒绝测试音", logReason: "voice_start")
+        cancelTestToneIfNeeded(statusMessage: "小米遥控器语音进行中，已拒绝测试音", logReason: "voice_start")
         voiceStopGeneration &+= 1
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
