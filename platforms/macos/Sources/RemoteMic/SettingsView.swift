@@ -64,7 +64,6 @@ struct SettingsView: View {
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
     @State private var advancedAudioExpanded = false
-    @Namespace private var navigationGlassNamespace
 
     init(model: BridgeAppModel) {
         self.model = model
@@ -72,14 +71,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        HStack(spacing: 0) {
             sidebar
-                .toolbar(removing: .sidebarToggle)
-                .navigationSplitViewColumnWidth(min: 96, ideal: 108, max: 120)
-        } detail: {
+                .frame(width: 108)
+            Divider()
             selectedPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 760, minHeight: 600)
         .onAppear(perform: refreshPermissionStates)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -104,31 +102,30 @@ struct SettingsView: View {
     }
 
     private var sidebar: some View {
-        GlassEffectContainer(spacing: 10) {
-            VStack(spacing: 10) {
-                ForEach(SettingsSection.allCases) { section in
-                    sidebarButton(section)
-                }
-                Spacer(minLength: 0)
-                Button {
-                    NSApp.terminate(nil)
-                } label: {
-                    VStack(spacing: 7) {
-                        Image(systemName: "power")
-                            .font(.system(size: 19, weight: .semibold))
-                        Text("退出应用")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("停止遥控器服务并完全退出 MiVibe Remote")
+        VStack(spacing: 10) {
+            ForEach(SettingsSection.allCases) { section in
+                sidebarButton(section)
             }
-            .padding(10)
+            Spacer(minLength: 0)
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                VStack(spacing: 7) {
+                    Image(systemName: "power")
+                        .font(.system(size: 19, weight: .semibold))
+                    Text("退出应用")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("停止遥控器服务并完全退出 MiVibe Remote")
         }
+        .padding(10)
+        .background(.regularMaterial)
     }
 
     private func sidebarButton(_ section: SettingsSection) -> some View {
@@ -146,24 +143,28 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .modifier(
-            SidebarGlassModifier(
-                isSelected: selectedSection == section,
-                namespace: navigationGlassNamespace
-            )
+        .foregroundStyle(selectedSection == section ? Color.accentColor : .secondary)
+        .background(
+            selectedSection == section ? Color.accentColor.opacity(0.12) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
     }
 
-    @ViewBuilder
     private var selectedPage: some View {
-        switch selectedSection {
-        case .connection:
+        ZStack {
             connectionPage
-        case .mapping:
+                .opacity(selectedSection == .connection ? 1 : 0)
+                .allowsHitTesting(selectedSection == .connection)
+                .accessibilityHidden(selectedSection != .connection)
             mappingPage
-        case .permissions:
+                .opacity(selectedSection == .mapping ? 1 : 0)
+                .allowsHitTesting(selectedSection == .mapping)
+                .accessibilityHidden(selectedSection != .mapping)
             permissionsPage
+                .opacity(selectedSection == .permissions ? 1 : 0)
+                .allowsHitTesting(selectedSection == .permissions)
+                .accessibilityHidden(selectedSection != .permissions)
         }
     }
 
@@ -904,27 +905,6 @@ private final class ShortcutCaptureNSView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window?.makeFirstResponder(self)
-        }
-    }
-}
-
-private struct SidebarGlassModifier: ViewModifier {
-    let isSelected: Bool
-    let namespace: Namespace.ID
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isSelected {
-            content
-                .foregroundStyle(Color.accentColor)
-                .glassEffect(
-                    .clear.tint(Color.accentColor.opacity(0.08)).interactive(),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .glassEffectID("settings-navigation-selection", in: namespace)
-        } else {
-            content
-                .foregroundStyle(.secondary)
         }
     }
 }

@@ -31,7 +31,7 @@ enum RemoteMicApp {
         let application = NSApplication.shared
         let delegate = RemoteMicAppDelegate()
         application.delegate = delegate
-        application.setActivationPolicy(.accessory)
+        application.setActivationPolicy(.regular)
         withExtendedLifetime(delegate) {
             application.run()
         }
@@ -57,6 +57,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         observeModel()
         model.startIfNeeded()
         refreshMenuStatus()
+        showSettings()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

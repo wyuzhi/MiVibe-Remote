@@ -1,4 +1,4 @@
-MiVibe Remote v0.1.1
+MiVibe Remote v0.1.2
 
 把小米蓝牙遥控器 2 Pro / RC003 变成 Windows 上的 Vibe Coding 控制器。
 

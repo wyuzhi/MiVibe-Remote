@@ -3,7 +3,7 @@ import Testing
 
 @Suite("App lifecycle")
 struct AppLifecycleTests {
-    @Test func menuBarUtilityHasClearExitPathsAndDoesNotMinimizeIntoDock() throws {
+    @Test func regularAppHasFastNavigationReopenAndClearExitPaths() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -16,13 +16,26 @@ struct AppLifecycleTests {
             contentsOf: root.appendingPathComponent("Sources/RemoteMic/SettingsView.swift"),
             encoding: .utf8
         )
+        let infoPlist = try String(
+            contentsOf: root.appendingPathComponent("Resources/Info.plist"),
+            encoding: .utf8
+        )
 
         #expect(appSource.contains("configureMainMenu()"))
         #expect(appSource.contains("title: \"退出 MiVibe Remote\""))
         #expect(appSource.contains("keyEquivalent: \"q\""))
+        #expect(appSource.contains("application.setActivationPolicy(.regular)"))
+        #expect(appSource.contains("applicationShouldHandleReopen"))
+        #expect(appSource.contains("refreshMenuStatus()\n        showSettings()"))
         #expect(appSource.contains("styleMask: [.titled, .closable, .resizable]"))
         #expect(!appSource.contains(".miniaturizable"))
         #expect(settingsSource.contains("Text(\"退出应用\")"))
         #expect(settingsSource.contains("NSApp.terminate(nil)"))
+        #expect(!settingsSource.contains("NavigationSplitView"))
+        #expect(!settingsSource.contains("settings-navigation-selection"))
+        #expect(settingsSource.contains("ZStack"))
+        #expect(settingsSource.contains(".allowsHitTesting(selectedSection =="))
+        #expect(infoPlist.contains("<key>LSUIElement</key>"))
+        #expect(infoPlist.contains("<false/>"))
     }
 }

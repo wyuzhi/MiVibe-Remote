@@ -33,8 +33,8 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
-- macOS：`MiVibe-Remote-0.1.1.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.1.exe`
+- macOS：`MiVibe-Remote-0.1.2.dmg`
+- Windows：`MiVibeRemoteSetup-0.1.2.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
 > 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
@@ -52,10 +52,13 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 26 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.1.dmg`。
+1. 下载并打开 `MiVibe-Remote-0.1.2.dmg`。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
 4. 首次启动后，在“权限”页面依次允许蓝牙、输入监控和辅助功能。
+
+关闭设置窗口后，应用仍在后台连接遥控器；点击程序坞中的 MiVibe Remote
+即可重新打开设置。需要彻底退出时，使用左侧“退出应用”、`⌘Q` 或程序坞菜单。
 5. 在 Codex 中选择 `MiRemoteV 2ch` 作为麦克风。
 6. 确认 Codex 的“按住听写”快捷键为 `Control + Shift + D`。
 
@@ -65,7 +68,7 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.1.exe`。
+1. 下载并运行 `MiVibeRemoteSetup-0.1.2.exe`。
 2. 安装器会从 VB-Audio 官方地址下载并验证 VB-CABLE，然后完成配置。
 3. 在 Codex 中选择 `CABLE Output` 作为麦克风。
 4. 确认 Codex 的“按住听写”快捷键为右 Alt。
@@ -142,7 +145,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.1 `
+  -Version 0.1.2 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

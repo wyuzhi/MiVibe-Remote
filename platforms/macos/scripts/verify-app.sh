@@ -26,7 +26,7 @@ test -f "$APP/Contents/Resources/虚拟麦克风说明.md"
 
 test "$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = \
   "com.mivibe.remote"
-test "$(plutil -extract LSUIElement raw -o - "$PLIST")" = "true"
+test "$(plutil -extract LSUIElement raw -o - "$PLIST")" = "false"
 test "$(plutil -extract LSMinimumSystemVersion raw -o - "$PLIST")" = "26.0"
 test "$(plutil -extract CFBundleIconFile raw -o - "$PLIST")" = "AppIcon"
 test -n "$(plutil -extract NSBluetoothAlwaysUsageDescription raw -o - "$PLIST")"
