@@ -38,6 +38,7 @@ final class AppSettings: ObservableObject {
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let peripheralIdentifier = "peripheralIdentifier"
         static let voiceShortcutProfile = "voiceShortcutProfile"
+        static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
     }
 
     private let defaults: UserDefaults
@@ -56,6 +57,10 @@ final class AppSettings: ObservableObject {
 
     @Published var voiceShortcutProfile: VoiceShortcutProfile {
         didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
+    }
+
+    @Published var headsetCompatibilityEnabled: Bool {
+        didSet { defaults.set(headsetCompatibilityEnabled, forKey: Keys.headsetCompatibilityEnabled) }
     }
 
     @Published var buttonBindings: [RemoteButton: ButtonAction] {
@@ -96,6 +101,9 @@ final class AppSettings: ObservableObject {
         voiceShortcutProfile = defaults.string(forKey: Keys.voiceShortcutProfile)
             .flatMap(VoiceShortcutProfile.init(rawValue:))
             ?? .codex
+        headsetCompatibilityEnabled = defaults.object(forKey: Keys.headsetCompatibilityEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.headsetCompatibilityEnabled)
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),
@@ -233,6 +241,21 @@ final class AppSettings: ObservableObject {
         buttonBindings = Self.workBuddyBindings
         buttonShortcuts = [:]
         secondaryButtonBindings = [:]
+    }
+
+    var activePreset: VoiceShortcutProfile? {
+        guard customMappingEnabled,
+              buttonShortcuts.isEmpty,
+              secondaryButtonBindings.isEmpty
+        else { return nil }
+        switch voiceShortcutProfile {
+        case .codex where buttonBindings == Self.codexBindings:
+            return .codex
+        case .workBuddy where buttonBindings == Self.workBuddyBindings:
+            return .workBuddy
+        default:
+            return nil
+        }
     }
 
     private func saveBindings() {

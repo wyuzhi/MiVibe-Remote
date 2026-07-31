@@ -18,8 +18,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     @Published private(set) var testToneStatus = "未选择语音输出设备"
     @Published private(set) var isPlayingTestTone = false
     @Published private(set) var voiceShortcutStatus = "正在准备语音快捷键"
+    @Published private(set) var isAudioReady = false
 
     private let audioOutput = VirtualAudioOutput()
+    private let defaultInputLease = DefaultInputDeviceLease()
     private var testToneGeneration = 0
     private var voiceFunctionKeyLatch = VoiceFunctionKeyLatch()
     private var activeVoiceShortcutProfile: VoiceShortcutProfile?
@@ -79,7 +81,14 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         guard !started else { return }
         started = true
         refreshAudioDevices()
-        applyAudioSettings(reason: "startup")
+        activatePersistentDefaultInput()
+        if !applyAudioSettings(reason: "startup") {
+            scheduleAudioRecovery(
+                reason: "startup_failed",
+                delay: AudioRecoveryPolicy.retryDelays[0],
+                retryAttempt: 1
+            )
+        }
         startObservingAudioHardware()
         applyHIDSettings()
         bluetoothBridge.start()
@@ -111,7 +120,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         updateVoiceFunctionKeyState(streaming: false)
         hidMonitor.stop()
         keyHardwareSuppressor.restore()
+        defaultInputLease.restore()
         audioOutput.stop()
+        isAudioReady = false
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
             self.terminationObserver = nil
@@ -166,18 +177,21 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         NSWorkspace.shared.open(instructions)
     }
 
-    func applyAudioSettings(reason: String = "settings_change") {
+    @discardableResult
+    func applyAudioSettings(reason: String = "settings_change") -> Bool {
         AppLogger.shared.write("AUDIO REBIND begin reason=\(reason) state={\(audioOutput.diagnosticState())}")
         cancelTestToneIfNeeded(statusMessage: "设备已更新，测试音已取消", logReason: "device_reconfigure")
         let configured = audioOutput.configure(deviceUID: settings.selectedAudioDeviceUID)
+        isAudioReady = configured
         audioStatus = audioOutput.status
         testToneStatus = audioOutput.isReadyForTestTone
             ? "可发送测试音"
             : "未选择语音输出设备或设备不可用"
         AppLogger.shared.write(
             "AUDIO REBIND finished reason=\(reason) success=\(configured) status=\(audioStatus) " +
-                "state={\(audioOutput.diagnosticState())}"
+            "state={\(audioOutput.diagnosticState())}"
         )
+        return configured
     }
 
     private func startObservingAudioHardware() {
@@ -223,9 +237,23 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         observedAudioHardwareAddresses.removeAll()
     }
 
-    private func scheduleAudioRecovery(reason: String, details: String = "") {
+    private func scheduleAudioRecovery(
+        reason: String,
+        details: String = "",
+        delay: TimeInterval = 1,
+        retryAttempt: Int = 0
+    ) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.started else { return }
+            let routeHealthyNow = self.audioOutput.isHealthy(
+                configuredDeviceUID: self.settings.selectedAudioDeviceUID,
+                availableDevices: self.audioDevices
+            )
+            self.isAudioReady = routeHealthyNow
+            if !routeHealthyNow {
+                self.audioStatus = "音频设备切换中，正在自动恢复"
+                self.testToneStatus = "音频设备切换中，正在自动恢复"
+            }
             self.audioRecoveryGeneration &+= 1
             let generation = self.audioRecoveryGeneration
             let replacedPendingRecovery = self.audioRecoveryWorkItem != nil
@@ -240,28 +268,54 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                         "state={\(self.audioOutput.diagnosticState())}"
                 )
                 self.refreshAudioDevices()
+                self.activatePersistentDefaultInput()
+                let configured: Bool
                 if self.audioOutput.isHealthy(
                     configuredDeviceUID: self.settings.selectedAudioDeviceUID,
                     availableDevices: self.audioDevices
                 ) {
+                    self.isAudioReady = true
+                    configured = true
                     AppLogger.shared.write(
                         "AUDIO RECOVERY skipped id=\(generation) reason=\(reason) " +
                             "detail=\(details) cause=route_still_healthy " +
                             "state={\(self.audioOutput.diagnosticState())}"
                     )
                 } else {
-                    self.applyAudioSettings(reason: "recovery_\(reason)")
+                    configured = self.applyAudioSettings(reason: "recovery_\(reason)")
                 }
                 AppLogger.shared.write(
                     "AUDIO RECOVERY completed id=\(generation) reason=\(reason) " +
                         "state={\(self.audioOutput.diagnosticState())}"
                 )
                 self.audioRecoveryWorkItem = nil
+                if !configured,
+                   let retryDelay = AudioRecoveryPolicy.retryDelay(
+                       afterFailedAttempt: retryAttempt
+                   )
+                {
+                    self.audioStatus = "音频设备切换中，正在自动恢复"
+                    self.testToneStatus = "音频设备切换中，正在自动恢复"
+                    AppLogger.shared.write(
+                        "AUDIO RECOVERY retry_scheduled attempt=\(retryAttempt + 1) " +
+                            "delay_ms=\(Int(retryDelay * 1_000)) reason=\(reason)"
+                    )
+                    self.scheduleAudioRecovery(
+                        reason: reason,
+                        details: details,
+                        delay: retryDelay,
+                        retryAttempt: retryAttempt + 1
+                    )
+                } else if !configured {
+                    self.audioStatus = "音频自动恢复未成功；请松开语音键后重试"
+                    self.testToneStatus = "音频未就绪，请重新选择虚拟麦克风"
+                }
             }
             self.audioRecoveryWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
             AppLogger.shared.write(
                 "AUDIO RECOVERY scheduled id=\(generation) reason=\(reason) detail=\(details) " +
+                    "delay_ms=\(Int(delay * 1_000)) retry_attempt=\(retryAttempt) " +
                     "replaced_pending=\(replacedPendingRecovery) state={\(self.audioOutput.diagnosticState())}"
             )
         }
@@ -434,6 +488,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         voiceStopGeneration &+= 1
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
+        ensureAudioReadyForVoice()
         updateVoiceFunctionKeyState(streaming: true)
         isStreaming = true
     }
@@ -472,6 +527,45 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     func bluetoothBridge(_ bridge: XiaomiBluetoothBridge, didDecode samples: [Int16]) {
         audioOutput.enqueue(samples: samples)
+    }
+
+    func applyHeadsetCompatibilitySetting() {
+        if settings.headsetCompatibilityEnabled {
+            activatePersistentDefaultInput()
+        } else {
+            defaultInputLease.restore()
+        }
+        scheduleAudioRecovery(
+            reason: "headset_compatibility_changed",
+            delay: AudioRecoveryPolicy.retryDelays[0]
+        )
+    }
+
+    private func ensureAudioReadyForVoice() {
+        refreshAudioDevices()
+        activatePersistentDefaultInput()
+        guard !audioOutput.isHealthy(
+            configuredDeviceUID: settings.selectedAudioDeviceUID,
+            availableDevices: audioDevices
+        ) else {
+            isAudioReady = true
+            return
+        }
+        guard !applyAudioSettings(reason: "voice_start") else { return }
+        scheduleAudioRecovery(
+            reason: "voice_start_failed",
+            delay: AudioRecoveryPolicy.retryDelays[0],
+            retryAttempt: 1
+        )
+    }
+
+    private func activatePersistentDefaultInput() {
+        guard settings.headsetCompatibilityEnabled,
+              let device = audioDevices.first(where: {
+                  $0.uid == settings.selectedAudioDeviceUID
+              })
+        else { return }
+        _ = defaultInputLease.activate(target: device)
     }
 
     private func updateVoiceFunctionKeyState(streaming: Bool) {

@@ -64,6 +64,7 @@ struct SettingsView: View {
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
     @State private var advancedAudioExpanded = false
+    @State private var installedApplicationBundleIdentifiers = Set<String>()
 
     init(model: BridgeAppModel) {
         self.model = model
@@ -79,9 +80,9 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 760, minHeight: 600)
-        .onAppear(perform: refreshPermissionStates)
+        .onAppear(perform: refreshRuntimeStates)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshPermissionStates()
+            refreshRuntimeStates()
         }
         .sheet(item: $shortcutEditingTarget) { target in
             ShortcutEditorSheet(
@@ -255,7 +256,7 @@ struct SettingsView: View {
                     title: "虚拟麦克风",
                     detail: virtualMicrophoneDetail,
                     badge: virtualMicrophoneBadge,
-                    tint: isVirtualMicrophoneSelected ? .green : .orange
+                    tint: isVirtualMicrophoneSelected && model.isAudioReady ? .green : .orange
                 )
 
                 Divider()
@@ -310,6 +311,17 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
+                        Toggle("蓝牙耳机兼容模式", isOn: Binding(
+                            get: { settings.headsetCompatibilityEnabled },
+                            set: { enabled in
+                                settings.headsetCompatibilityEnabled = enabled
+                                model.applyHeadsetCompatibilitySetting()
+                            }
+                        ))
+                        Text("开启后，MiVibe 运行期间固定使用 MiRemoteV 2ch 作为输入，耳机继续负责播放；关闭开关或退出 MiVibe 后恢复原麦克风。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
                         HStack(spacing: 10) {
                             Button("重新选择虚拟麦克风") {
                                 model.refreshAudioDevices()
@@ -346,6 +358,15 @@ struct SettingsView: View {
             GlassPanel {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("当前模式")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            StatusPill(
+                                text: currentPresetStatus,
+                                tint: settings.activePreset == nil ? .orange : .green
+                            )
+                        }
                         Toggle("启用小米遥控器自定义按键映射", isOn: Binding(
                             get: { settings.customMappingEnabled },
                             set: { enabled in
@@ -367,16 +388,8 @@ struct SettingsView: View {
                         selectedRemoteButton = .ok
                     }
                     .buttonStyle(.glass)
-                    Button("Codex 预设") {
-                        settings.applyCodexPreset()
-                        selectedRemoteButton = .power
-                    }
-                    .buttonStyle(.glassProminent)
-                    Button("WorkBuddy 预设") {
-                        settings.applyWorkBuddyPreset()
-                        selectedRemoteButton = .power
-                    }
-                    .buttonStyle(.glassProminent)
+                    presetButton(.codex)
+                    presetButton(.workBuddy)
                 }
             }
 
@@ -441,7 +454,6 @@ struct SettingsView: View {
         let selected = selectedRemoteButton == button
         let currentAction = settings.action(for: button)
         let currentShortcut = settings.shortcut(for: button)
-        let installedBundleIdentifiers = PresetApplication.installedBundleIdentifiers
         let content = VStack(spacing: 4) {
             HStack(spacing: 8) {
                 Button {
@@ -469,11 +481,11 @@ struct SettingsView: View {
                     }
                 )) {
                     ForEach(ButtonAction.pickerActions(
-                        installedBundleIdentifiers: installedBundleIdentifiers,
+                        installedBundleIdentifiers: installedApplicationBundleIdentifiers,
                         current: currentAction
                     )) { action in
                         let unavailable = action.presetApplication.map {
-                            !installedBundleIdentifiers.contains($0.bundleIdentifier)
+                            !installedApplicationBundleIdentifiers.contains($0.bundleIdentifier)
                         } ?? false
                         Text(action.displayName + (unavailable ? "（未安装）" : "")).tag(action)
                     }
@@ -553,7 +565,6 @@ struct SettingsView: View {
         trigger: ButtonTrigger
     ) -> some View {
         let configured = settings.configuredAction(for: button, trigger: trigger)
-        let installedBundleIdentifiers = PresetApplication.installedBundleIdentifiers
         return HStack(spacing: 8) {
             Text(trigger.displayName)
                 .font(.caption)
@@ -572,11 +583,11 @@ struct SettingsView: View {
                 }
             )) {
                 ForEach(ButtonAction.pickerActions(
-                    installedBundleIdentifiers: installedBundleIdentifiers,
+                    installedBundleIdentifiers: installedApplicationBundleIdentifiers,
                     current: configured.action
                 )) { action in
                     let unavailable = action.presetApplication.map {
-                        !installedBundleIdentifiers.contains($0.bundleIdentifier)
+                        !installedApplicationBundleIdentifiers.contains($0.bundleIdentifier)
                     } ?? false
                     Text(action.displayName + (unavailable ? "（未安装）" : "")).tag(action)
                 }
@@ -761,13 +772,17 @@ struct SettingsView: View {
     }
 
     private var virtualMicrophoneBadge: String {
-        if isVirtualMicrophoneSelected { return "已就绪" }
+        if isVirtualMicrophoneSelected && model.isAudioReady { return "已就绪" }
+        if isVirtualMicrophoneSelected { return "自动恢复中" }
         return model.hasDoubaoAudioDevice ? "正在配置" : "需要安装"
     }
 
     private var virtualMicrophoneDetail: String {
-        if isVirtualMicrophoneSelected {
+        if isVirtualMicrophoneSelected && model.isAudioReady {
             return "遥控器语音会直接进入 \(settings.voiceShortcutProfile.displayName)，不会从扬声器播放"
+        }
+        if isVirtualMicrophoneSelected {
+            return model.audioStatus
         }
         if model.hasDoubaoAudioDevice {
             return "已找到 MiRemoteV 2ch，正在自动选择"
@@ -779,10 +794,41 @@ struct SettingsView: View {
         bluetoothAuthorization == .allowedAlways ? .granted : .pending
     }
 
-    private func refreshPermissionStates() {
+    private var currentPresetStatus: String {
+        if let preset = settings.activePreset {
+            return "\(preset.displayName) 模式"
+        }
+        return "自定义 · 语音 \(settings.voiceShortcutProfile.displayName)"
+    }
+
+    @ViewBuilder
+    private func presetButton(_ preset: VoiceShortcutProfile) -> some View {
+        let isActive = settings.activePreset == preset
+        let action = {
+            switch preset {
+            case .codex:
+                settings.applyCodexPreset()
+            case .workBuddy:
+                settings.applyWorkBuddyPreset()
+            }
+            selectedRemoteButton = .power
+        }
+        if isActive {
+            Button(action: action) {
+                Label("\(preset.displayName) 已启用", systemImage: "checkmark.circle.fill")
+            }
+            .buttonStyle(.glassProminent)
+        } else {
+            Button("\(preset.displayName) 预设", action: action)
+                .buttonStyle(.glass)
+        }
+    }
+
+    private func refreshRuntimeStates() {
         bluetoothAuthorization = CBManager.authorization
         inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
         accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
+        installedApplicationBundleIdentifiers = PresetApplication.installedBundleIdentifiers
     }
 }
 

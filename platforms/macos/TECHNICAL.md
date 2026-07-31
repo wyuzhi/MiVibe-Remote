@@ -54,7 +54,7 @@ ATVV 通道为：
 
 ## 音频输出
 
-`VirtualAudioOutput` 使用 `AVAudioEngine` 和 `AVAudioPlayerNode`，内部格式固定为 16 kHz、单声道、Float32。应用枚举所有具有输出声道的 CoreAudio 设备，并把语音直接写入用户选择的设备，不修改系统默认输入或输出。
+`VirtualAudioOutput` 使用 `AVAudioEngine` 和 `AVAudioPlayerNode`，内部格式固定为 16 kHz、单声道、Float32。应用枚举所有具有输出声道的 CoreAudio 设备，并把语音直接写入用户选择的设备。耳机兼容模式开启时，在 MiVibe 运行期间保持系统默认输入为 `MiRemoteV 2ch`，关闭兼容模式或退出应用后恢复原设备；系统默认输出始终不变。CoreAudio 路由切换失败时按有界退避自动重试，并在下一次语音开始前执行即时健康检查。
 
 测试音同样只在内存中生成。只有音频设备已经配置、小米遥控器未在传输语音且没有其他测试音播放时才允许发送；真实语音开始或设备重新配置时会取消测试音，避免阻塞语音缓冲。
 

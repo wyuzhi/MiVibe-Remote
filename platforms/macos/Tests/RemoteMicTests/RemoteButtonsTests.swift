@@ -186,6 +186,7 @@ struct RemoteButtonsTests {
         settings.setAction(.openCursor, for: .tv, trigger: .doubleClick)
 
         settings.applyCodexPreset()
+        #expect(settings.activePreset == .codex)
 
         #expect(settings.customMappingEnabled)
         #expect(settings.voiceShortcutProfile == .codex)
@@ -208,6 +209,7 @@ struct RemoteButtonsTests {
         let settings = AppSettings(defaults: defaults)
 
         settings.applyWorkBuddyPreset()
+        #expect(settings.activePreset == .workBuddy)
 
         #expect(settings.customMappingEnabled)
         #expect(settings.voiceShortcutProfile == .workBuddy)
@@ -218,6 +220,23 @@ struct RemoteButtonsTests {
         let restored = AppSettings(defaults: defaults)
         #expect(restored.voiceShortcutProfile == .workBuddy)
         #expect(restored.action(for: .power) == .openWorkBuddy)
+    }
+
+    @Test func customizedPresetIsClearlyReportedAndHeadsetCompatibilityDefaultsOn() throws {
+        let suite = "RemoteButtonsTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.activePreset == .codex)
+        #expect(settings.headsetCompatibilityEnabled)
+
+        settings.setAction(.openWorkBuddy, for: .tv)
+        #expect(settings.activePreset == nil)
+
+        settings.headsetCompatibilityEnabled = false
+        let restored = AppSettings(defaults: defaults)
+        #expect(!restored.headsetCompatibilityEnabled)
     }
 
     @Test func migratesTheOriginalHomeKeyVibePresetToThePowerKey() throws {

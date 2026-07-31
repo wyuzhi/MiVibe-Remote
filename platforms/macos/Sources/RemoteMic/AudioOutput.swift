@@ -12,6 +12,46 @@ struct AudioDeviceInfo: Identifiable, Equatable {
 
 enum CoreAudioDeviceCatalog {
     static func outputDevices() -> [AudioDeviceInfo] {
+        allDeviceIDs().compactMap { deviceID in
+            guard outputChannelCount(for: deviceID) > 0 else { return nil }
+            return deviceInfo(for: deviceID)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func device(uid: String) -> AudioDeviceInfo? {
+        allDeviceIDs()
+            .compactMap(deviceInfo)
+            .first { $0.uid == uid }
+    }
+
+    static func defaultInputDevice() -> AudioDeviceInfo? {
+        defaultDevice(selector: kAudioHardwarePropertyDefaultInputDevice)
+    }
+
+    static func supportsInput(_ device: AudioDeviceInfo) -> Bool {
+        inputChannelCount(for: device.id) > 0
+    }
+
+    @discardableResult
+    static func setDefaultInputDevice(_ device: AudioDeviceInfo) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = device.id
+        return AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size),
+            &deviceID
+        ) == noErr
+    }
+
+    private static func allDeviceIDs() -> [AudioDeviceID] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -36,12 +76,7 @@ enum CoreAudioDeviceCatalog {
             &size,
             &deviceIDs
         ) == noErr else { return [] }
-
-        return deviceIDs.compactMap { deviceID in
-            guard outputChannelCount(for: deviceID) > 0 else { return nil }
-            return deviceInfo(for: deviceID)
-        }
-        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        return deviceIDs
     }
 
     static func deviceInfo(for deviceID: AudioDeviceID) -> AudioDeviceInfo? {
@@ -112,9 +147,20 @@ enum CoreAudioDeviceCatalog {
     }
 
     private static func outputChannelCount(for deviceID: AudioDeviceID) -> Int {
+        channelCount(for: deviceID, scope: kAudioDevicePropertyScopeOutput)
+    }
+
+    private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+        channelCount(for: deviceID, scope: kAudioDevicePropertyScopeInput)
+    }
+
+    private static func channelCount(
+        for deviceID: AudioDeviceID,
+        scope: AudioObjectPropertyScope
+    ) -> Int {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: kAudioDevicePropertyScopeOutput,
+            mScope: scope,
             mElement: kAudioObjectPropertyElementMain
         )
         var size: UInt32 = 0
@@ -134,6 +180,85 @@ enum CoreAudioDeviceCatalog {
             raw.assumingMemoryBound(to: AudioBufferList.self)
         )
         return bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+}
+
+final class DefaultInputDeviceLease {
+    private var targetDeviceUID: String?
+    private var previousDeviceUID: String?
+
+    var isActive: Bool { targetDeviceUID != nil }
+
+    @discardableResult
+    func activate(target: AudioDeviceInfo) -> Bool {
+        guard CoreAudioDeviceCatalog.supportsInput(target) else {
+            AppLogger.shared.write(
+                "AUDIO INPUT_LEASE skipped reason=target_has_no_input target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))}"
+            )
+            return false
+        }
+
+        if targetDeviceUID == target.uid {
+            let current = CoreAudioDeviceCatalog.defaultInputDevice()
+            guard current?.uid != target.uid else {
+                return true
+            }
+            if let current {
+                previousDeviceUID = current.uid
+            }
+            let restored = CoreAudioDeviceCatalog.setDefaultInputDevice(target)
+            AppLogger.shared.write(
+                "AUDIO INPUT_LEASE reasserted=\(restored) target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))} " +
+                    "previous={\(CoreAudioDeviceCatalog.deviceDiagnostic(current))}"
+            )
+            return restored
+        }
+
+        let previous = CoreAudioDeviceCatalog.defaultInputDevice()
+        if previous?.uid == target.uid {
+            targetDeviceUID = target.uid
+            previousDeviceUID = nil
+            AppLogger.shared.write("AUDIO INPUT_LEASE already_active target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))}")
+            return true
+        }
+
+        guard CoreAudioDeviceCatalog.setDefaultInputDevice(target) else {
+            AppLogger.shared.write(
+                "AUDIO INPUT_LEASE activate_failed target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))}"
+            )
+            return false
+        }
+        targetDeviceUID = target.uid
+        previousDeviceUID = previous?.uid
+        AppLogger.shared.write(
+            "AUDIO INPUT_LEASE activated target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))} " +
+                "previous={\(CoreAudioDeviceCatalog.deviceDiagnostic(previous))}"
+        )
+        return true
+    }
+
+    func restore() {
+        guard let targetDeviceUID else { return }
+        defer {
+            self.targetDeviceUID = nil
+            previousDeviceUID = nil
+        }
+        guard let previousDeviceUID else {
+            AppLogger.shared.write("AUDIO INPUT_LEASE released restore=not_needed")
+            return
+        }
+        guard CoreAudioDeviceCatalog.defaultInputDevice()?.uid == targetDeviceUID else {
+            AppLogger.shared.write("AUDIO INPUT_LEASE released restore=skipped_default_changed")
+            return
+        }
+        guard let previous = CoreAudioDeviceCatalog.device(uid: previousDeviceUID) else {
+            AppLogger.shared.write("AUDIO INPUT_LEASE released restore=previous_unavailable")
+            return
+        }
+        let restored = CoreAudioDeviceCatalog.setDefaultInputDevice(previous)
+        AppLogger.shared.write(
+            "AUDIO INPUT_LEASE released restored=\(restored) previous={\(CoreAudioDeviceCatalog.deviceDiagnostic(previous))}"
+        )
     }
 }
 
@@ -434,6 +559,13 @@ enum ObjectiveCExceptionGuard {
 }
 
 enum AudioRecoveryPolicy {
+    static let retryDelays: [TimeInterval] = [0.5, 1, 2, 4, 8]
+
+    static func retryDelay(afterFailedAttempt attempt: Int) -> TimeInterval? {
+        guard retryDelays.indices.contains(attempt) else { return nil }
+        return retryDelays[attempt]
+    }
+
     static func routeIsHealthy(
         configuredDeviceUID: String,
         availableDeviceUIDs: Set<String>,

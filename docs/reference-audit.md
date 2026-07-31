@@ -34,7 +34,7 @@
 - 单击、双击、长按和长按重复。
 - 任意快捷键录制、系统音量/媒体动作、打开 Codex 等常用 App。
 - 语音键按下/释放会发送 Codex 的 `Control + Shift + D` 长按听写快捷键，并与 ATVV 会话同步。
-- CoreAudio 输出到 BlackHole 或 `MiRemoteV 2ch`，不修改系统默认输入输出。
+- CoreAudio 输出到 BlackHole 或 `MiRemoteV 2ch`；耳机兼容模式在 MiVibe 运行期间保持虚拟麦克风为系统默认输入，并在关闭模式或退出应用时恢复原设备，不修改系统默认输出。
 - SwiftUI 设置页、菜单栏、权限引导、日志、测试音、驱动 PKG/DMG 和测试。
 - 当前版本含 61 项 Swift 测试及 36 项自检。
 

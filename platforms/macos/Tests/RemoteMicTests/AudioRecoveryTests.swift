@@ -78,4 +78,11 @@ struct AudioRecoveryTests {
             actualOutputDeviceUID: "MacBookSpeakers"
         ))
     }
+
+    @Test func failedRoutesRetryWithBoundedBackoff() {
+        #expect(AudioRecoveryPolicy.retryDelay(afterFailedAttempt: 0) == 0.5)
+        #expect(AudioRecoveryPolicy.retryDelay(afterFailedAttempt: 1) == 1)
+        #expect(AudioRecoveryPolicy.retryDelay(afterFailedAttempt: 4) == 8)
+        #expect(AudioRecoveryPolicy.retryDelay(afterFailedAttempt: 5) == nil)
+    }
 }
