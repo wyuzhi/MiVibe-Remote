@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-enum VoiceShortcutProfile: String, Codable, Equatable {
+enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
     case codex
     case workBuddy
 
@@ -24,6 +24,13 @@ enum VoiceShortcutProfile: String, Codable, Equatable {
         case .codex: return "等待语音键；Codex 使用按住型 ⌃⇧D"
         case .workBuddy: return "等待语音键；WorkBuddy 使用开关型 ⌘D"
         }
+    }
+
+    var next: VoiceShortcutProfile {
+        guard let index = Self.allCases.firstIndex(of: self) else {
+            return Self.allCases[0]
+        }
+        return Self.allCases[(index + 1) % Self.allCases.count]
     }
 }
 
@@ -228,33 +235,71 @@ final class AppSettings: ObservableObject {
     }
 
     func applyCodexPreset() {
-        customMappingEnabled = true
-        voiceShortcutProfile = .codex
-        buttonBindings = Self.codexBindings
-        buttonShortcuts = [:]
-        secondaryButtonBindings = [:]
+        applyPreset(.codex)
     }
 
     func applyWorkBuddyPreset() {
+        applyPreset(.workBuddy)
+    }
+
+    @discardableResult
+    func cyclePreset() -> VoiceShortcutProfile {
+        let nextProfile = voiceShortcutProfile.next
+        applyPreset(nextProfile)
+        return nextProfile
+    }
+
+    func applyPreset(
+        _ profile: VoiceShortcutProfile,
+        preservingCycleActions: Bool = true
+    ) {
+        let cycleActions = preservingCycleActions ? configuredCycleActions : []
         customMappingEnabled = true
-        voiceShortcutProfile = .workBuddy
-        buttonBindings = Self.workBuddyBindings
+        voiceShortcutProfile = profile
+        buttonBindings = Self.bindings(for: profile)
         buttonShortcuts = [:]
         secondaryButtonBindings = [:]
+        for (button, trigger) in cycleActions {
+            setAction(.cyclePreset, for: button, trigger: trigger)
+        }
     }
 
     var activePreset: VoiceShortcutProfile? {
         guard customMappingEnabled,
-              buttonShortcuts.isEmpty,
-              secondaryButtonBindings.isEmpty
+              buttonShortcuts.isEmpty
         else { return nil }
-        switch voiceShortcutProfile {
-        case .codex where buttonBindings == Self.codexBindings:
-            return .codex
-        case .workBuddy where buttonBindings == Self.workBuddyBindings:
-            return .workBuddy
-        default:
-            return nil
+
+        let expected = Self.bindings(for: voiceShortcutProfile)
+        let mainBindingsMatch = RemoteButton.allCases.allSatisfy { button in
+            let action = action(for: button)
+            return action == expected[button] || action == .cyclePreset
+        }
+        let secondaryBindingsAreOnlyPresetSwitches = secondaryButtonBindings.values
+            .flatMap(\.values)
+            .allSatisfy { $0.action == .cyclePreset }
+        return mainBindingsMatch && secondaryBindingsAreOnlyPresetSwitches
+            ? voiceShortcutProfile
+            : nil
+    }
+
+    private var configuredCycleActions: [(RemoteButton, ButtonTrigger)] {
+        RemoteButton.allCases.flatMap { button in
+            ButtonTrigger.allCases.compactMap { trigger in
+                configuredAction(for: button, trigger: trigger).action == .cyclePreset
+                    ? (button, trigger)
+                    : nil
+            }
+        }
+    }
+
+    private static func bindings(
+        for profile: VoiceShortcutProfile
+    ) -> [RemoteButton: ButtonAction] {
+        switch profile {
+        case .codex:
+            return codexBindings
+        case .workBuddy:
+            return workBuddyBindings
         }
     }
 

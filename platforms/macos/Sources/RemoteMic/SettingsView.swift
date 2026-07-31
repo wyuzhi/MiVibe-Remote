@@ -415,7 +415,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("按键动作")
                                     .font(.headline)
-                                Text("点击或按下左侧实体按键定位；修改后自动保存。")
+                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy 循环。")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

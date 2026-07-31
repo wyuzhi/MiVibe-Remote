@@ -223,6 +223,8 @@ def format_action(actions) -> str:
         return f"输入文本：{action.get('text', '')}"
     if action_type == "command":
         return str(action.get("label") or "启动程序")
+    if action_type == "preset_cycle":
+        return "循环切换预设"
     return action_type
 
 
@@ -881,6 +883,12 @@ class XiaomiSettingsWindow:
             command=self.restore_selected,
             style="Quiet.TButton",
         ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            key_buttons,
+            text="设为循环切换预设",
+            command=self.set_selected_to_preset_cycle,
+            style="Quiet.TButton",
+        ).pack(side="left", padx=(8, 0))
 
         tk.Frame(right_card, bg="#e5e5ea", height=1).pack(fill="x", pady=(18, 14))
         tk.Label(
@@ -1293,6 +1301,20 @@ class XiaomiSettingsWindow:
         self.save_status_var.set("有未保存的按键修改")
         self.select_button(self.selected_id)
 
+    def set_selected_to_preset_cycle(self) -> None:
+        self.working_bindings[self.selected_id] = [
+            {
+                "type": "preset_cycle",
+                "label": "循环切换预设",
+            }
+        ]
+        if self.selected_id == "mic":
+            self.voice_enabled.set(False)
+        self.save_status_var.set(
+            f"{BUTTON_LABELS[self.selected_id]} 已设为循环切换预设，保存后生效"
+        )
+        self.select_button(self.selected_id)
+
     def restore_selected(self) -> None:
         defaults = (
             workbuddy_button_bindings()
@@ -1320,8 +1342,10 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def apply_codex_preset(self) -> None:
+        cycle_bindings = self._cycle_bindings()
         self.working_preset = "codex"
         self.working_bindings = codex_button_bindings()
+        self.working_bindings.update(cycle_bindings)
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1331,8 +1355,10 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def apply_workbuddy_preset(self) -> None:
+        cycle_bindings = self._cycle_bindings()
         self.working_preset = "workbuddy"
         self.working_bindings = workbuddy_button_bindings()
+        self.working_bindings.update(cycle_bindings)
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1340,6 +1366,17 @@ class XiaomiSettingsWindow:
         self.save_status_var.set("已载入 WorkBuddy 预设，点击“保存并应用”后生效")
         self.selected_id = "power"
         self.select_button(self.selected_id)
+
+    def _cycle_bindings(self) -> dict:
+        result = {}
+        for button, actions in self.working_bindings.items():
+            action_list = actions if isinstance(actions, list) else [actions]
+            if any(
+                isinstance(action, dict) and action.get("type") == "preset_cycle"
+                for action in action_list
+            ):
+                result[button] = copy.deepcopy(actions)
+        return result
 
     def save(self) -> None:
         try:

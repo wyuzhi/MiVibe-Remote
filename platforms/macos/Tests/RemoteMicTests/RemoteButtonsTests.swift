@@ -60,6 +60,12 @@ struct RemoteButtonsTests {
         let applicationActions = ButtonAction.allCases.filter { $0.presetApplication != nil }
         #expect(applicationActions.count == PresetApplication.allCases.count)
         #expect(applicationActions.allSatisfy { !$0.allowsRepeat })
+        #expect(!ButtonAction.cyclePreset.allowsRepeat)
+    }
+
+    @Test func cyclePresetMovesInDeclaredOrderAndWrapsAround() {
+        #expect(VoiceShortcutProfile.codex.next == .workBuddy)
+        #expect(VoiceShortcutProfile.workBuddy.next == .codex)
     }
 
     @Test func buttonActionsKeepRawValueCodableCompatibility() throws {
@@ -220,6 +226,32 @@ struct RemoteButtonsTests {
         let restored = AppSettings(defaults: defaults)
         #expect(restored.voiceShortcutProfile == .workBuddy)
         #expect(restored.action(for: .power) == .openWorkBuddy)
+    }
+
+    @Test func cyclePresetKeepsEveryConfiguredCycleTrigger() throws {
+        let suiteName = "RemoteMicTests.cyclePreset.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        settings.setAction(.cyclePreset, for: .tv)
+        settings.setAction(.cyclePreset, for: .menu, trigger: .doubleClick)
+
+        #expect(settings.activePreset == .codex)
+        #expect(settings.cyclePreset() == .workBuddy)
+        #expect(settings.voiceShortcutProfile == .workBuddy)
+        #expect(settings.action(for: .power) == .openWorkBuddy)
+        #expect(settings.action(for: .tv) == .cyclePreset)
+        #expect(settings.configuredAction(
+            for: .menu,
+            trigger: .doubleClick
+        ).action == .cyclePreset)
+        #expect(settings.activePreset == .workBuddy)
+
+        #expect(settings.cyclePreset() == .codex)
+        #expect(settings.action(for: .power) == .openCodex)
+        #expect(settings.action(for: .tv) == .cyclePreset)
+        #expect(settings.activePreset == .codex)
     }
 
     @Test func customizedPresetIsClearlyReportedAndHeadsetCompatibilityDefaultsOn() throws {

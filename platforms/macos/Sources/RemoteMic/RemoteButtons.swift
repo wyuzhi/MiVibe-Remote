@@ -278,6 +278,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     case volumeMute
     case playPause
     case customShortcut
+    case cyclePreset
     case openRemoteMic
     case openCodex
     case openWorkBuddy
@@ -313,6 +314,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .volumeMute: return "系统静音"
         case .playPause: return "播放 / 暂停"
         case .customShortcut: return "自定义快捷键"
+        case .cyclePreset: return "循环切换预设"
         case .openRemoteMic: return "打开 MiVibe Remote"
         case .openCodex: return "打开 Codex"
         case .openWorkBuddy: return "打开 WorkBuddy"
@@ -351,7 +353,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     }
 
     var allowsRepeat: Bool {
-        presetApplication == nil
+        presetApplication == nil && self != .cyclePreset
     }
 
     static func pickerActions(

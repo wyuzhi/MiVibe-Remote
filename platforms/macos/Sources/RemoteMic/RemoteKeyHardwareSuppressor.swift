@@ -121,7 +121,7 @@ enum RemoteKeyHardwareSuppressionPolicy {
             usageValue = 0x81
         case .volumeMute:
             usageValue = 0x7F
-        case .disabled, .showDesktop, .appSwitcher, .playPause, .customShortcut,
+        case .disabled, .showDesktop, .appSwitcher, .playPause, .customShortcut, .cyclePreset,
              .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor,
              .openXcode, .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari,
              .openZed:

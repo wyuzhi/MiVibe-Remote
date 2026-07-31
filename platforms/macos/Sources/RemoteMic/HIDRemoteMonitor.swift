@@ -53,6 +53,7 @@ final class HIDRemoteMonitor {
     private(set) var status = "按键映射未启用"
     var onStatus: ((String) -> Void)?
     var onActiveButtons: ((Set<RemoteButton>) -> Void)?
+    var onCyclePreset: (() -> Void)?
     var ensureHardwareSuppression: (() -> Bool)?
     var shouldInjectInDeviceSuppressedMode: ((RemoteButton) -> Bool)?
 
@@ -354,6 +355,13 @@ final class HIDRemoteMonitor {
             return false
         }
         let configured = settings.configuredAction(for: button, trigger: trigger)
+        if configured.action == .cyclePreset {
+            onCyclePreset?()
+            AppLogger.shared.write(
+                "HID BUTTON button=\(button.rawValue) trigger=\(trigger.rawValue) action=\(configured.action.rawValue)"
+            )
+            return true
+        }
         guard KeyboardInjector.send(configured.action, shortcut: configured.shortcut) else {
             stop()
             updateStatus("辅助功能权限已失效；已释放遥控器")

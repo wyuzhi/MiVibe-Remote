@@ -37,6 +37,12 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         monitor.onActiveButtons = { [weak self] buttons in
             self?.activeRemoteButtons = buttons
         }
+        monitor.onCyclePreset = { [weak self] in
+            guard let self else { return }
+            let profile = self.settings.cyclePreset()
+            self.voiceShortcutStatus = profile.readyStatus
+            AppLogger.shared.write("PRESET CYCLE active=\(profile.rawValue)")
+        }
         monitor.ensureHardwareSuppression = { [weak self] in
             guard let self else { return false }
             return self.keyHardwareSuppressor.apply(settings: self.settings)

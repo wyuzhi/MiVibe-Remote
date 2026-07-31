@@ -16,7 +16,7 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.5"
+APP_VERSION = "0.1.6"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 MAPPING_SCHEMA_VERSION = 1
 
@@ -25,6 +25,7 @@ CODEX_VOICE_TRIGGER_MODE = "hold"
 WORKBUDDY_VOICE_HOTKEY = ("ctrl", "d")
 WORKBUDDY_VOICE_TRIGGER_MODE = "toggle"
 DEFAULT_VOICE_HOTKEY = CODEX_VOICE_HOTKEY
+PRESET_ORDER = ("codex", "workbuddy")
 
 HOTKEY_VK = {
     "backspace": 0x08,
@@ -233,6 +234,65 @@ def workbuddy_button_bindings() -> dict:
     ]
     bindings["menu"] = [{"type": "hotkey", "keys": ["esc"]}]
     return bindings
+
+
+def preset_button_bindings(preset: str) -> dict:
+    if preset == "workbuddy":
+        return workbuddy_button_bindings()
+    return codex_button_bindings()
+
+
+def next_preset(preset: str) -> str:
+    try:
+        index = PRESET_ORDER.index(preset)
+    except ValueError:
+        return PRESET_ORDER[0]
+    return PRESET_ORDER[(index + 1) % len(PRESET_ORDER)]
+
+
+def apply_preset_configuration(
+    config: dict,
+    keys_config: dict,
+    preset: str,
+    preserve_cycle_actions: bool = True,
+) -> str:
+    if preset not in PRESET_ORDER:
+        preset = PRESET_ORDER[0]
+    current_bindings = keys_config.get("button_bindings", {})
+    cycle_bindings = {}
+    if preserve_cycle_actions and isinstance(current_bindings, dict):
+        for button, actions in current_bindings.items():
+            action_list = actions if isinstance(actions, list) else [actions]
+            if any(
+                isinstance(action, dict) and action.get("type") == "preset_cycle"
+                for action in action_list
+            ):
+                cycle_bindings[button] = copy.deepcopy(actions)
+
+    bindings = preset_button_bindings(preset)
+    bindings.update(cycle_bindings)
+    voice_hotkey = (
+        WORKBUDDY_VOICE_HOTKEY if preset == "workbuddy" else CODEX_VOICE_HOTKEY
+    )
+    voice_trigger_mode = (
+        WORKBUDDY_VOICE_TRIGGER_MODE
+        if preset == "workbuddy"
+        else CODEX_VOICE_TRIGGER_MODE
+    )
+    config["active_preset"] = preset
+    config["voice_shortcut_enabled"] = True
+    config["voice_hotkey"] = "+".join(voice_hotkey)
+    config["voice_trigger_mode"] = voice_trigger_mode
+    keys_config["button_bindings"] = bindings
+    return preset
+
+
+def cycle_preset_configuration(config: dict, keys_config: dict) -> str:
+    return apply_preset_configuration(
+        config,
+        keys_config,
+        next_preset(str(config.get("active_preset", PRESET_ORDER[0]))),
+    )
 
 
 def default_config() -> dict:

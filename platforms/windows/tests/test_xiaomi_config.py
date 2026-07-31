@@ -64,6 +64,34 @@ class XiaomiConfigTests(unittest.TestCase):
             [0x11, ord("D")],
         )
 
+    def test_cycle_preset_wraps_and_preserves_the_configured_switch_button(self) -> None:
+        config = default_config()
+        keys = default_keys_config()
+        keys["button_bindings"]["tv"] = [
+            {"type": "preset_cycle", "label": "循环切换预设"}
+        ]
+
+        active = xiaomi_config.cycle_preset_configuration(config, keys)
+
+        self.assertEqual(active, "workbuddy")
+        self.assertEqual(config["active_preset"], "workbuddy")
+        self.assertEqual(config["voice_trigger_mode"], "toggle")
+        self.assertEqual(config["voice_hotkey"], "ctrl+d")
+        self.assertEqual(
+            keys["button_bindings"]["power"][0]["label"],
+            "打开 WorkBuddy",
+        )
+        self.assertEqual(
+            keys["button_bindings"]["tv"][0]["type"],
+            "preset_cycle",
+        )
+
+        active = xiaomi_config.cycle_preset_configuration(config, keys)
+
+        self.assertEqual(active, "codex")
+        self.assertEqual(config["voice_trigger_mode"], "hold")
+        self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
+
     def test_normalizes_supported_address_formats(self):
         self.assertEqual(
             normalize_bluetooth_address("aa-bb-cc-dd-ee-ff"),

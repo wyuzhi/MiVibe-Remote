@@ -138,7 +138,7 @@ enum KeyboardInjector {
             if let shortcut {
                 keyPoster(CGKeyCode(shortcut.keyCode), shortcut.cgEventFlags)
             }
-        case .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
+        case .cyclePreset, .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed:
             break
         }

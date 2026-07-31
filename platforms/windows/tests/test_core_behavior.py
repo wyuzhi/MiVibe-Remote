@@ -58,6 +58,26 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         )
         hook._load_bridge_core.assert_not_called()
 
+    def test_preset_cycle_action_uses_runtime_handler_without_keyboard_mapper(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
+            xiaomi_core.XiaomiSpecialKeyHook
+        )
+        hook.button_bindings = {
+            "tv": [{"type": "preset_cycle", "label": "循环切换预设"}]
+        }
+        hook.key_send_lock = threading.Lock()
+        hook.preset_cycle_handler = mock.Mock(return_value="workbuddy")
+        hook._load_bridge_core = mock.Mock(
+            side_effect=AssertionError("preset cycling does not inject a keyboard key")
+        )
+
+        with mock.patch("builtins.print"):
+            handled = hook._perform_button_action("tv")
+
+        self.assertTrue(handled)
+        hook.preset_cycle_handler.assert_called_once_with()
+        hook._load_bridge_core.assert_not_called()
+
     def test_injector_declares_64_bit_windows_handle_signatures(self) -> None:
         source = Path(hid_tap_injector.__file__).read_text(encoding="utf-8")
         self.assertIn("kernel32.GetCurrentProcess.restype = wintypes.HANDLE", source)

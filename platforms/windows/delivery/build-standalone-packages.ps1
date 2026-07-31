@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [string] $Version = "0.1.5",
+  [string] $Version = "0.1.6",
   [string[]] $Product = @("xiaomi"),
   [switch] $AllowUnsignedCandidate,
   [string] $PythonExecutable = "",

@@ -55,6 +55,7 @@ from .xiaomi_config import (
     DEFAULT_VOICE_HOTKEY,
     HOTKEY_VK,
     apply_remote_identity,
+    cycle_preset_configuration,
     device_token_from_address,
     load_config,
     load_keys_config,
@@ -337,6 +338,7 @@ class XiaomiSpecialKeyHook:
         volume_repeat_delay: float = 0.40,
         volume_repeat_interval: float = 0.12,
         button_bindings: dict | None = None,
+        preset_cycle_handler=None,
     ):
         self.action_gate = action_gate
         self.enabled = enabled and os.name == "nt"
@@ -345,6 +347,7 @@ class XiaomiSpecialKeyHook:
         self.volume_repeat_delay = max(0.20, float(volume_repeat_delay))
         self.volume_repeat_interval = max(0.04, float(volume_repeat_interval))
         self.button_bindings = button_bindings if isinstance(button_bindings, dict) else {}
+        self.preset_cycle_handler = preset_cycle_handler
         self._bridge_core = None
         self._bridge_core_lock = threading.Lock()
         self.user32 = ctypes.windll.user32
@@ -433,6 +436,15 @@ class XiaomiSpecialKeyHook:
             return False
         try:
             action_type = str(action.get("type", "hotkey"))
+            if action_type == "preset_cycle":
+                if self.preset_cycle_handler is None:
+                    return False
+                preset = self.preset_cycle_handler()
+                print(
+                    f"XIAOMI PRESET CYCLE active={preset}",
+                    flush=True,
+                )
+                return True
             with self.key_send_lock:
                 if action_type == "command":
                     arguments = action.get("args", [])
@@ -1568,6 +1580,18 @@ def main(argv: list[str] | None = None) -> int:
         args.no_voice_shortcut = True
     hid_tap_enabled = bool(config.get("hid_report_tap_enabled", True))
     action_guard = XiaomiTvActionGate(config.get("tv_action_ready_delay", 2.0))
+    def cycle_runtime_preset() -> str:
+        preset = cycle_preset_configuration(config, keys_config)
+        save_config(config, config_path)
+        save_keys_config(keys_config, KEYS_CONFIG_PATH)
+        special_keys.button_bindings = keys_config.get("button_bindings", {})
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                client.sendto(b"RESTART:xiaomi", ("127.0.0.1", 28690))
+        except OSError:
+            pass
+        return preset
+
     special_keys = XiaomiSpecialKeyHook(
         action_guard,
         bool(config.get("special_key_hook_enabled", True)),
@@ -1576,6 +1600,7 @@ def main(argv: list[str] | None = None) -> int:
         float(config.get("volume_repeat_delay", 0.40)),
         float(config.get("volume_repeat_interval", 0.12)),
         keys_config.get("button_bindings", {}),
+        cycle_runtime_preset,
     )
     special_keys.start()
     hid_report_tap = XiaomiHidReportTap(
