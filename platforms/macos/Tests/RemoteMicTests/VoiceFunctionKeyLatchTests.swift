@@ -4,8 +4,13 @@ import Testing
 
 @Suite("Voice Fn hold")
 struct VoiceFunctionKeyLatchTests {
-    @Test func macOSVoiceDrainMatchesTheProvenWindowsBridgeWindow() {
+    @Test func macOSVoicePipelinePreservesBothEdgesOfSpeech() {
+        #expect(BridgeAppModel.voiceInputSwitchSettleDelay == 0.30)
+        #expect(BridgeAppModel.voiceCaptureStartupDelay == 0.20)
         #expect(BridgeAppModel.voiceDrainDelay == 0.12)
+        #expect(BridgeAppModel.voicePipelineLatency == 0.50)
+        #expect(BridgeAppModel.voiceStopDelay == 0.62)
+        #expect(BridgeAppModel.maximumVoicePreRollSamples >= 16_000)
     }
 
     @Test func emitsOnePressAndOneReleasePerStream() {
