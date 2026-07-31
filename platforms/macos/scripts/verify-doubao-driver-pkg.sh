@@ -32,6 +32,7 @@ case "$MODE" in
     /usr/bin/grep -qx './Library/Audio/Plug-Ins/HAL/MiRemoteV2ch.driver/Contents/MacOS/MiRemoteV2ch' "$PAYLOAD_FILES"
     test -x "$EXPANDED/Scripts/preinstall"
     test -x "$EXPANDED/Scripts/postinstall"
+    /usr/bin/grep -Fq '<relocate/>' "$EXPANDED/PackageInfo"
     /usr/bin/grep -Fqx 'DESTINATION="${TARGET_VOLUME%/}/Library/Audio/Plug-Ins/HAL/MiRemoteV2ch.driver"' "$EXPANDED/Scripts/preinstall"
     /usr/bin/grep -Fqx '/usr/bin/codesign --verify --deep --strict "$DESTINATION"' "$EXPANDED/Scripts/postinstall"
     /usr/bin/grep -Fqx '/usr/bin/codesign --verify --deep --strict "$APP_DESTINATION"' "$EXPANDED/Scripts/postinstall"

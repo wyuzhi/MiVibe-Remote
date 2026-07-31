@@ -45,7 +45,7 @@ final class AppSettings: ObservableObject {
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let peripheralIdentifier = "peripheralIdentifier"
         static let voiceShortcutProfile = "voiceShortcutProfile"
-        static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
+        static let temporaryVoiceInputSwitchEnabled = "temporaryVoiceInputSwitchEnabled"
     }
 
     private let defaults: UserDefaults
@@ -66,8 +66,13 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
     }
 
-    @Published var headsetCompatibilityEnabled: Bool {
-        didSet { defaults.set(headsetCompatibilityEnabled, forKey: Keys.headsetCompatibilityEnabled) }
+    @Published var temporaryVoiceInputSwitchEnabled: Bool {
+        didSet {
+            defaults.set(
+                temporaryVoiceInputSwitchEnabled,
+                forKey: Keys.temporaryVoiceInputSwitchEnabled
+            )
+        }
     }
 
     @Published var buttonBindings: [RemoteButton: ButtonAction] {
@@ -108,9 +113,11 @@ final class AppSettings: ObservableObject {
         voiceShortcutProfile = defaults.string(forKey: Keys.voiceShortcutProfile)
             .flatMap(VoiceShortcutProfile.init(rawValue:))
             ?? .codex
-        headsetCompatibilityEnabled = defaults.object(forKey: Keys.headsetCompatibilityEnabled) == nil
+        temporaryVoiceInputSwitchEnabled = defaults.object(
+            forKey: Keys.temporaryVoiceInputSwitchEnabled
+        ) == nil
             ? true
-            : defaults.bool(forKey: Keys.headsetCompatibilityEnabled)
+            : defaults.bool(forKey: Keys.temporaryVoiceInputSwitchEnabled)
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),

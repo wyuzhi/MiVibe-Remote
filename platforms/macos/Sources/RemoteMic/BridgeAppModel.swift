@@ -87,7 +87,6 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         guard !started else { return }
         started = true
         refreshAudioDevices()
-        activatePersistentDefaultInput()
         if !applyAudioSettings(reason: "startup") {
             scheduleAudioRecovery(
                 reason: "startup_failed",
@@ -274,7 +273,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                         "state={\(self.audioOutput.diagnosticState())}"
                 )
                 self.refreshAudioDevices()
-                self.activatePersistentDefaultInput()
+                if self.isStreaming {
+                    self.activateTemporaryVoiceInput()
+                }
                 let configured: Bool
                 if self.audioOutput.isHealthy(
                     configuredDeviceUID: self.settings.selectedAudioDeviceUID,
@@ -504,6 +505,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         guard started else {
             audioOutput.endSession()
             updateVoiceFunctionKeyState(streaming: false)
+            defaultInputLease.restore()
             return
         }
         voiceStopGeneration &+= 1
@@ -516,6 +518,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             else { return }
             self.audioOutput.endSession()
             self.updateVoiceFunctionKeyState(streaming: false)
+            self.defaultInputLease.restore()
             self.voiceStopWorkItem = nil
             AppLogger.shared.write(
                 "VOICE DRAIN completed delay_ms=\(Int(Self.voiceDrainDelay * 1_000))"
@@ -535,21 +538,21 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioOutput.enqueue(samples: samples)
     }
 
-    func applyHeadsetCompatibilitySetting() {
-        if settings.headsetCompatibilityEnabled {
-            activatePersistentDefaultInput()
-        } else {
+    func applyTemporaryVoiceInputSetting() {
+        if !settings.temporaryVoiceInputSwitchEnabled {
             defaultInputLease.restore()
+        } else if isStreaming {
+            activateTemporaryVoiceInput()
         }
-        scheduleAudioRecovery(
-            reason: "headset_compatibility_changed",
-            delay: AudioRecoveryPolicy.retryDelays[0]
+        AppLogger.shared.write(
+            "AUDIO TEMPORARY_INPUT enabled=\(settings.temporaryVoiceInputSwitchEnabled) " +
+                "streaming=\(isStreaming) active=\(defaultInputLease.isActive)"
         )
     }
 
     private func ensureAudioReadyForVoice() {
         refreshAudioDevices()
-        activatePersistentDefaultInput()
+        activateTemporaryVoiceInput()
         guard !audioOutput.isHealthy(
             configuredDeviceUID: settings.selectedAudioDeviceUID,
             availableDevices: audioDevices
@@ -565,8 +568,8 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         )
     }
 
-    private func activatePersistentDefaultInput() {
-        guard settings.headsetCompatibilityEnabled,
+    private func activateTemporaryVoiceInput() {
+        guard settings.temporaryVoiceInputSwitchEnabled,
               let device = audioDevices.first(where: {
                   $0.uid == settings.selectedAudioDeviceUID
               })

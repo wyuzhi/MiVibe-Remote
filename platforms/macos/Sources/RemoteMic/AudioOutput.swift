@@ -186,12 +186,36 @@ enum CoreAudioDeviceCatalog {
 final class DefaultInputDeviceLease {
     private var targetDeviceUID: String?
     private var previousDeviceUID: String?
+    private let supportsInput: (AudioDeviceInfo) -> Bool
+    private let defaultInputDevice: () -> AudioDeviceInfo?
+    private let setDefaultInputDevice: (AudioDeviceInfo) -> Bool
+    private let deviceForUID: (String) -> AudioDeviceInfo?
 
     var isActive: Bool { targetDeviceUID != nil }
 
+    init(
+        supportsInput: @escaping (AudioDeviceInfo) -> Bool = {
+            CoreAudioDeviceCatalog.supportsInput($0)
+        },
+        defaultInputDevice: @escaping () -> AudioDeviceInfo? = {
+            CoreAudioDeviceCatalog.defaultInputDevice()
+        },
+        setDefaultInputDevice: @escaping (AudioDeviceInfo) -> Bool = {
+            CoreAudioDeviceCatalog.setDefaultInputDevice($0)
+        },
+        deviceForUID: @escaping (String) -> AudioDeviceInfo? = {
+            CoreAudioDeviceCatalog.device(uid: $0)
+        }
+    ) {
+        self.supportsInput = supportsInput
+        self.defaultInputDevice = defaultInputDevice
+        self.setDefaultInputDevice = setDefaultInputDevice
+        self.deviceForUID = deviceForUID
+    }
+
     @discardableResult
     func activate(target: AudioDeviceInfo) -> Bool {
-        guard CoreAudioDeviceCatalog.supportsInput(target) else {
+        guard supportsInput(target) else {
             AppLogger.shared.write(
                 "AUDIO INPUT_LEASE skipped reason=target_has_no_input target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))}"
             )
@@ -199,14 +223,14 @@ final class DefaultInputDeviceLease {
         }
 
         if targetDeviceUID == target.uid {
-            let current = CoreAudioDeviceCatalog.defaultInputDevice()
+            let current = defaultInputDevice()
             guard current?.uid != target.uid else {
                 return true
             }
             if let current {
                 previousDeviceUID = current.uid
             }
-            let restored = CoreAudioDeviceCatalog.setDefaultInputDevice(target)
+            let restored = setDefaultInputDevice(target)
             AppLogger.shared.write(
                 "AUDIO INPUT_LEASE reasserted=\(restored) target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))} " +
                     "previous={\(CoreAudioDeviceCatalog.deviceDiagnostic(current))}"
@@ -214,7 +238,7 @@ final class DefaultInputDeviceLease {
             return restored
         }
 
-        let previous = CoreAudioDeviceCatalog.defaultInputDevice()
+        let previous = defaultInputDevice()
         if previous?.uid == target.uid {
             targetDeviceUID = target.uid
             previousDeviceUID = nil
@@ -222,7 +246,7 @@ final class DefaultInputDeviceLease {
             return true
         }
 
-        guard CoreAudioDeviceCatalog.setDefaultInputDevice(target) else {
+        guard setDefaultInputDevice(target) else {
             AppLogger.shared.write(
                 "AUDIO INPUT_LEASE activate_failed target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))}"
             )
@@ -247,15 +271,15 @@ final class DefaultInputDeviceLease {
             AppLogger.shared.write("AUDIO INPUT_LEASE released restore=not_needed")
             return
         }
-        guard CoreAudioDeviceCatalog.defaultInputDevice()?.uid == targetDeviceUID else {
+        guard defaultInputDevice()?.uid == targetDeviceUID else {
             AppLogger.shared.write("AUDIO INPUT_LEASE released restore=skipped_default_changed")
             return
         }
-        guard let previous = CoreAudioDeviceCatalog.device(uid: previousDeviceUID) else {
+        guard let previous = deviceForUID(previousDeviceUID) else {
             AppLogger.shared.write("AUDIO INPUT_LEASE released restore=previous_unavailable")
             return
         }
-        let restored = CoreAudioDeviceCatalog.setDefaultInputDevice(previous)
+        let restored = setDefaultInputDevice(previous)
         AppLogger.shared.write(
             "AUDIO INPUT_LEASE released restored=\(restored) previous={\(CoreAudioDeviceCatalog.deviceDiagnostic(previous))}"
         )

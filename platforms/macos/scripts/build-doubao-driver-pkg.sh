@@ -45,6 +45,7 @@ test -x /usr/bin/pkgbuild
 /usr/bin/pkgbuild \
   --root "$PAYLOAD_ROOT" \
   --scripts "$INSTALL_SCRIPTS" \
+  --component-plist "$ROOT/packaging/doubao-driver/components.plist" \
   --identifier "com.mivibe.remote.installer" \
   --version "$VERSION" \
   --install-location / \

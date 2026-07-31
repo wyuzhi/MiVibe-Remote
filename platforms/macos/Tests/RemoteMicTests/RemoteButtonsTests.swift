@@ -254,21 +254,32 @@ struct RemoteButtonsTests {
         #expect(settings.activePreset == .codex)
     }
 
-    @Test func customizedPresetIsClearlyReportedAndHeadsetCompatibilityDefaultsOn() throws {
+    @Test func customizedPresetIsClearlyReportedAndTemporaryVoiceInputSwitchDefaultsOn() throws {
         let suite = "RemoteButtonsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
 
         #expect(settings.activePreset == .codex)
-        #expect(settings.headsetCompatibilityEnabled)
+        #expect(settings.temporaryVoiceInputSwitchEnabled)
 
         settings.setAction(.openWorkBuddy, for: .tv)
         #expect(settings.activePreset == nil)
 
-        settings.headsetCompatibilityEnabled = false
+        settings.temporaryVoiceInputSwitchEnabled = false
         let restored = AppSettings(defaults: defaults)
-        #expect(!restored.headsetCompatibilityEnabled)
+        #expect(!restored.temporaryVoiceInputSwitchEnabled)
+    }
+
+    @Test func temporaryVoiceInputSwitchUsesTheNewDefaultAfterLegacyCompatibilityMode() throws {
+        let suite = "RemoteButtonsTests.temporaryInputMigration-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(false, forKey: "headsetCompatibilityEnabled")
+
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.temporaryVoiceInputSwitchEnabled)
     }
 
     @Test func migratesTheOriginalHomeKeyVibePresetToThePowerKey() throws {

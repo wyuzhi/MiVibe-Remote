@@ -311,14 +311,14 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Toggle("蓝牙耳机兼容模式", isOn: Binding(
-                            get: { settings.headsetCompatibilityEnabled },
+                        Toggle("遥控器语音时临时切换系统麦克风", isOn: Binding(
+                            get: { settings.temporaryVoiceInputSwitchEnabled },
                             set: { enabled in
-                                settings.headsetCompatibilityEnabled = enabled
-                                model.applyHeadsetCompatibilitySetting()
+                                settings.temporaryVoiceInputSwitchEnabled = enabled
+                                model.applyTemporaryVoiceInputSetting()
                             }
                         ))
-                        Text("开启后，MiVibe 运行期间固定使用 MiRemoteV 2ch 作为输入，耳机继续负责播放；关闭开关或退出 MiVibe 后恢复原麦克风。")
+                        Text("开启后，仅在按住遥控器语音键期间切到 MiRemoteV 2ch；松开并完成尾音传输后，自动恢复你此前选择的 MacBook、耳机或其他麦克风。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -779,7 +779,7 @@ struct SettingsView: View {
 
     private var virtualMicrophoneDetail: String {
         if isVirtualMicrophoneSelected && model.isAudioReady {
-            return "遥控器语音会直接进入 \(settings.voiceShortcutProfile.displayName)，不会从扬声器播放"
+            return "按住遥控器语音键时临时切换到 MiRemoteV 2ch，松开后恢复原麦克风"
         }
         if isVirtualMicrophoneSelected {
             return model.audioStatus
