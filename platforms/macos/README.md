@@ -7,13 +7,14 @@ MiVibe Remote 的增量：
 
 - 独立名称、Bundle ID 和原创图标；
 - 移除上游专有 Logo、产品照片和上游 Sparkle 更新源；
-- 新增“Vibe Coding 预设”：
-  - 主页键：打开 Codex；
+- 新增“Codex 预设”和“WorkBuddy 预设”：
+  - 电源键：按当前预设打开 Codex 或 WorkBuddy；
   - 确定键：Return / 发送；
   - 方向键：导航；
   - 返回键：退格；
   - 菜单键：Escape；
-  - 语音键：小米遥控器 ATVV 麦克风开始传输时按下 Codex `⌃⇧D`，松开后释放。
+  - Codex 语音键：ATVV 开始时按下 `⌃⇧D`，松开后释放；
+  - WorkBuddy 语音键：ATVV 开始和结束时分别点按一次 `⌘D`。
 
 ## 构建要求
 

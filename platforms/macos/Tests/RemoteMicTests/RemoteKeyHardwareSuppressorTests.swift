@@ -26,7 +26,7 @@ struct RemoteKeyHardwareSuppressorTests {
         let unrelated = HIDUsageMapping(source: 0x0000_0007_0000_0004, destination: 99)
         let existingLeft = HIDUsageMapping(source: leftSource, destination: 42)
 
-        let actions = AppSettings.vibeCodingBindings
+        let actions = AppSettings.codexBindings
         let applied = RemoteKeyHardwareSuppressionPolicy.applying(
             to: [unrelated, existingLeft],
             actions: actions,
@@ -54,7 +54,7 @@ struct RemoteKeyHardwareSuppressorTests {
         let unrelated = HIDUsageMapping(source: 0x0000_0007_0000_0004, destination: 100)
         let current = RemoteKeyHardwareSuppressionPolicy.applying(
             to: [unrelated],
-            actions: AppSettings.vibeCodingBindings,
+            actions: AppSettings.codexBindings,
             buttonsWithSecondaryActions: []
         )
 

@@ -12,6 +12,7 @@ struct RemoteButtonsTests {
         #expect(mappings == [
             "MiVibe Remote": "com.mivibe.remote",
             "Codex": "com.openai.codex",
+            "WorkBuddy": "com.workbuddy.workbuddy",
             "Claude": "com.anthropic.claudefordesktop",
             "cmux": "com.cmuxterm.app",
             "微信": "com.tencent.xinWeChat",
@@ -164,32 +165,59 @@ struct RemoteButtonsTests {
         #expect(AppSettings.defaultBindings[.tv] == .appSwitcher)
     }
 
-    @Test func vibeCodingPresetOpensCodexAndKeepsNavigationAndSend() throws {
-        #expect(AppSettings.vibeCodingBindings[.power] == .openCodex)
-        #expect(AppSettings.vibeCodingBindings[.home] == .showDesktop)
-        #expect(AppSettings.vibeCodingBindings[.ok] == .returnKey)
-        #expect(AppSettings.vibeCodingBindings[.up] == .arrowUp)
-        #expect(AppSettings.vibeCodingBindings[.down] == .arrowDown)
-        #expect(AppSettings.vibeCodingBindings[.back] == .deleteBackward)
-        #expect(AppSettings.vibeCodingBindings[.menu] == .escape)
+    @Test func codexPresetOpensCodexAndKeepsNavigationAndSend() throws {
+        #expect(AppSettings.codexBindings[.power] == .openCodex)
+        #expect(AppSettings.codexBindings[.home] == .showDesktop)
+        #expect(AppSettings.codexBindings[.ok] == .returnKey)
+        #expect(AppSettings.codexBindings[.up] == .arrowUp)
+        #expect(AppSettings.codexBindings[.down] == .arrowDown)
+        #expect(AppSettings.codexBindings[.back] == .deleteBackward)
+        #expect(AppSettings.codexBindings[.menu] == .escape)
 
-        let suiteName = "RemoteMicTests.vibePreset.\(UUID().uuidString)"
+        let suiteName = "RemoteMicTests.codexPreset.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = AppSettings(defaults: defaults)
         #expect(settings.customMappingEnabled)
+        #expect(settings.voiceShortcutProfile == .codex)
         #expect(settings.action(for: .power) == .openCodex)
         #expect(settings.action(for: .menu) == .escape)
         settings.setAction(.openClaude, for: .power)
         settings.setAction(.openCursor, for: .tv, trigger: .doubleClick)
 
-        settings.applyVibeCodingPreset()
+        settings.applyCodexPreset()
 
         #expect(settings.customMappingEnabled)
+        #expect(settings.voiceShortcutProfile == .codex)
         #expect(settings.action(for: .power) == .openCodex)
         #expect(settings.action(for: .ok) == .returnKey)
         #expect(settings.action(for: .back) == .deleteBackward)
         #expect(!settings.hasSecondaryAction(for: .tv))
+    }
+
+    @Test func workBuddyPresetOpensWorkBuddyAndUsesItsVoiceProfile() throws {
+        #expect(AppSettings.workBuddyBindings[.power] == .openWorkBuddy)
+        #expect(AppSettings.workBuddyBindings[.home] == .showDesktop)
+        #expect(AppSettings.workBuddyBindings[.ok] == .returnKey)
+        #expect(AppSettings.workBuddyBindings[.back] == .deleteBackward)
+        #expect(AppSettings.workBuddyBindings[.menu] == .escape)
+
+        let suiteName = "RemoteMicTests.workBuddyPreset.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        settings.applyWorkBuddyPreset()
+
+        #expect(settings.customMappingEnabled)
+        #expect(settings.voiceShortcutProfile == .workBuddy)
+        #expect(settings.action(for: .power) == .openWorkBuddy)
+        #expect(settings.action(for: .ok) == .returnKey)
+        #expect(settings.action(for: .back) == .deleteBackward)
+
+        let restored = AppSettings(defaults: defaults)
+        #expect(restored.voiceShortcutProfile == .workBuddy)
+        #expect(restored.action(for: .power) == .openWorkBuddy)
     }
 
     @Test func migratesTheOriginalHomeKeyVibePresetToThePowerKey() throws {

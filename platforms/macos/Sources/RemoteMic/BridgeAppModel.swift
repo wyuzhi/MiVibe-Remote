@@ -17,11 +17,12 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     @Published private(set) var audioDevices: [AudioDeviceInfo] = []
     @Published private(set) var testToneStatus = "未选择语音输出设备"
     @Published private(set) var isPlayingTestTone = false
-    @Published private(set) var voiceShortcutStatus = "正在准备 Codex ⌃⇧D 听写快捷键"
+    @Published private(set) var voiceShortcutStatus = "正在准备语音快捷键"
 
     private let audioOutput = VirtualAudioOutput()
     private var testToneGeneration = 0
     private var voiceFunctionKeyLatch = VoiceFunctionKeyLatch()
+    private var activeVoiceShortcutProfile: VoiceShortcutProfile?
     private var voiceStopWorkItem: DispatchWorkItem?
     private var voiceStopGeneration: UInt64 = 0
     private let keyHardwareSuppressor = RemoteKeyHardwareSuppressor()
@@ -54,12 +55,21 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private var observedAudioHardwareAddresses: [AudioObjectPropertyAddress] = []
     private var audioRecoveryWorkItem: DispatchWorkItem?
     private var audioRecoveryGeneration: UInt64 = 0
+    private var cancellables = Set<AnyCancellable>()
     private lazy var audioHardwareListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
         let properties = Self.audioHardwarePropertyNames(count: count, addresses: addresses)
         self?.scheduleAudioRecovery(reason: "hardware_change", details: "properties=\(properties)")
     }
 
     init() {
+        voiceShortcutStatus = settings.voiceShortcutProfile.readyStatus
+        settings.$voiceShortcutProfile
+            .dropFirst()
+            .sink { [weak self] profile in
+                guard let self, !self.voiceFunctionKeyLatch.isHeld else { return }
+                self.voiceShortcutStatus = profile.readyStatus
+            }
+            .store(in: &cancellables)
         audioOutput.onConfigurationChange = { [weak self] in
             self?.scheduleAudioRecovery(reason: "engine_configuration_change")
         }
@@ -230,7 +240,18 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                         "state={\(self.audioOutput.diagnosticState())}"
                 )
                 self.refreshAudioDevices()
-                self.applyAudioSettings(reason: "recovery_\(reason)")
+                if self.audioOutput.isHealthy(
+                    configuredDeviceUID: self.settings.selectedAudioDeviceUID,
+                    availableDevices: self.audioDevices
+                ) {
+                    AppLogger.shared.write(
+                        "AUDIO RECOVERY skipped id=\(generation) reason=\(reason) " +
+                            "detail=\(details) cause=route_still_healthy " +
+                            "state={\(self.audioOutput.diagnosticState())}"
+                    )
+                } else {
+                    self.applyAudioSettings(reason: "recovery_\(reason)")
+                }
                 AppLogger.shared.write(
                     "AUDIO RECOVERY completed id=\(generation) reason=\(reason) " +
                         "state={\(self.audioOutput.diagnosticState())}"
@@ -455,20 +476,35 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     private func updateVoiceFunctionKeyState(streaming: Bool) {
         guard let transition = voiceFunctionKeyLatch.transition(streaming: streaming) else { return }
-        let shouldHold = transition == .press
-        guard KeyboardInjector.setCodexDictationHeld(shouldHold) else {
+        let profile = transition == .release
+            ? activeVoiceShortcutProfile ?? settings.voiceShortcutProfile
+            : settings.voiceShortcutProfile
+        guard KeyboardInjector.sendVoiceShortcut(profile: profile, transition: transition) else {
             voiceFunctionKeyLatch.rollback(transition)
-            voiceShortcutStatus = "需要辅助功能权限才能触发 Codex 听写"
+            voiceShortcutStatus = "需要辅助功能权限才能触发 \(profile.displayName) 语音"
             AppLogger.shared.write(
-                "VOICE CODEX SHORTCUT failed edge=\(shouldHold ? "down" : "up")"
+                "VOICE SHORTCUT failed profile=\(profile.rawValue) edge=\(transition)"
             )
             return
         }
-        voiceShortcutStatus = shouldHold
-            ? "Codex ⌃⇧D 已按下；松开语音键即释放"
-            : "Codex ⌃⇧D 已释放"
+        if transition == .press {
+            activeVoiceShortcutProfile = profile
+        } else {
+            activeVoiceShortcutProfile = nil
+        }
+        switch (profile, transition) {
+        case (.codex, .press):
+            voiceShortcutStatus = "Codex ⌃⇧D 已按下；松开语音键即释放"
+        case (.codex, .release):
+            voiceShortcutStatus = "Codex ⌃⇧D 已释放"
+        case (.workBuddy, .press):
+            voiceShortcutStatus = "WorkBuddy ⌘D 已点按；正在录音"
+        case (.workBuddy, .release):
+            voiceShortcutStatus = "WorkBuddy ⌘D 已再次点按；正在转写"
+        }
         AppLogger.shared.write(
-            "VOICE CODEX SHORTCUT \(shouldHold ? "DOWN" : "UP") chord=control+shift+d"
+            "VOICE SHORTCUT profile=\(profile.rawValue) edge=\(transition) " +
+                "chord=\(profile.shortcutDisplayName)"
         )
     }
 }

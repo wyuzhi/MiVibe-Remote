@@ -19,8 +19,8 @@ from bridges.xiaomi.xiaomi_config import (  # noqa: E402
 
 
 class XiaomiConfigTests(unittest.TestCase):
-    def test_vibe_coding_preset_opens_codex_and_keeps_send_navigation(self) -> None:
-        bindings = xiaomi_config.vibe_coding_button_bindings()
+    def test_codex_preset_opens_codex_and_keeps_send_navigation(self) -> None:
+        bindings = xiaomi_config.codex_button_bindings()
 
         self.assertEqual(bindings["power"][0]["type"], "command")
         self.assertEqual(bindings["power"][0]["label"], "打开 Codex")
@@ -33,13 +33,35 @@ class XiaomiConfigTests(unittest.TestCase):
         self.assertEqual(bindings["down"][0]["keys"], ["down"])
         self.assertEqual(bindings["back"][0]["keys"], ["backspace"])
         self.assertEqual(bindings["menu"][0]["keys"], ["esc"])
-        self.assertEqual(bindings["mic"][0]["keys"], list(xiaomi_config.DEFAULT_VOICE_HOTKEY))
-        self.assertEqual(xiaomi_config.VIBE_CODING_VOICE_TRIGGER_MODE, "hold")
+        self.assertEqual(bindings["mic"][0]["keys"], list(xiaomi_config.CODEX_VOICE_HOTKEY))
+        self.assertEqual(xiaomi_config.CODEX_VOICE_TRIGGER_MODE, "hold")
         self.assertEqual(default_config()["voice_trigger_mode"], "hold")
+        self.assertEqual(default_config()["active_preset"], "codex")
         self.assertEqual(default_keys_config()["button_bindings"]["power"][0]["type"], "command")
         self.assertEqual(
             default_keys_config()["button_bindings"]["power"][0]["label"],
             "打开 Codex",
+        )
+
+    def test_workbuddy_preset_opens_workbuddy_and_uses_toggle_voice(self) -> None:
+        bindings = xiaomi_config.workbuddy_button_bindings()
+
+        self.assertEqual(bindings["power"][0]["type"], "command")
+        self.assertEqual(bindings["power"][0]["label"], "打开 WorkBuddy")
+        command = bindings["power"][0]["args"][-1]
+        self.assertIn("Get-StartApps", command)
+        self.assertIn("'WorkBuddy'", command)
+        self.assertIn("Start-Process 'workbuddy:'", command)
+        self.assertEqual(bindings["mic"][0]["keys"], ["ctrl", "d"])
+        self.assertEqual(bindings["ok"][0]["keys"], ["enter"])
+        self.assertEqual(bindings["back"][0]["keys"], ["backspace"])
+        self.assertEqual(bindings["menu"][0]["keys"], ["esc"])
+        self.assertEqual(xiaomi_config.WORKBUDDY_VOICE_TRIGGER_MODE, "toggle")
+        self.assertEqual(
+            xiaomi_config.resolve_hotkey_virtual_keys(
+                xiaomi_config.WORKBUDDY_VOICE_HOTKEY
+            ),
+            [0x11, ord("D")],
         )
 
     def test_normalizes_supported_address_formats(self):

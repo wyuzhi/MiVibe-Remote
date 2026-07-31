@@ -16,12 +16,15 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.1.4"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 MAPPING_SCHEMA_VERSION = 1
 
-DEFAULT_VOICE_HOTKEY = ("rightalt",)
-VIBE_CODING_VOICE_TRIGGER_MODE = "hold"
+CODEX_VOICE_HOTKEY = ("rightalt",)
+CODEX_VOICE_TRIGGER_MODE = "hold"
+WORKBUDDY_VOICE_HOTKEY = ("ctrl", "d")
+WORKBUDDY_VOICE_TRIGGER_MODE = "toggle"
+DEFAULT_VOICE_HOTKEY = CODEX_VOICE_HOTKEY
 
 HOTKEY_VK = {
     "backspace": 0x08,
@@ -175,9 +178,20 @@ CODEX_START_COMMAND = (
     "catch { Start-Process 'codex.exe' } }"
 )
 
+WORKBUDDY_START_COMMAND = (
+    "$app = Get-StartApps | Where-Object { $_.Name -eq 'WorkBuddy' } "
+    "| Select-Object -First 1; "
+    "if ($app) { Start-Process ('shell:AppsFolder\\' + $app.AppID) } "
+    "else { try { Start-Process 'workbuddy:' -ErrorAction Stop } "
+    "catch { Start-Process 'WorkBuddy.exe' } }"
+)
 
-def vibe_coding_button_bindings() -> dict:
+
+def codex_button_bindings() -> dict:
     bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
+    bindings["mic"] = [
+        {"type": "hotkey", "keys": list(CODEX_VOICE_HOTKEY)}
+    ]
     bindings["power"] = [
         {
             "type": "command",
@@ -197,6 +211,30 @@ def vibe_coding_button_bindings() -> dict:
     return bindings
 
 
+def workbuddy_button_bindings() -> dict:
+    bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
+    bindings["mic"] = [
+        {"type": "hotkey", "keys": list(WORKBUDDY_VOICE_HOTKEY)}
+    ]
+    bindings["power"] = [
+        {
+            "type": "command",
+            "args": [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                WORKBUDDY_START_COMMAND,
+            ],
+            "label": "打开 WorkBuddy",
+        }
+    ]
+    bindings["menu"] = [{"type": "hotkey", "keys": ["esc"]}]
+    return bindings
+
+
 def default_config() -> dict:
     return {
         "version": APP_VERSION,
@@ -205,7 +243,8 @@ def default_config() -> dict:
         "retry_delay": 3.0,
         "voice_shortcut_enabled": True,
         "voice_hotkey": "+".join(DEFAULT_VOICE_HOTKEY),
-        "voice_trigger_mode": VIBE_CODING_VOICE_TRIGGER_MODE,
+        "voice_trigger_mode": CODEX_VOICE_TRIGGER_MODE,
+        "active_preset": "codex",
         "raw_mapping_enabled": True,
         "tv_action_ready_delay": 2.0,
         "special_key_hook_enabled": True,
@@ -232,7 +271,7 @@ def default_keys_config() -> dict:
         "handle_key_up": False,
         "handle_mouse_move": False,
         "button_aliases": copy.deepcopy(BUTTON_ALIASES),
-        "button_bindings": vibe_coding_button_bindings(),
+        "button_bindings": codex_button_bindings(),
         "bindings": {},
     }
 

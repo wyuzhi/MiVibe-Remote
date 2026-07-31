@@ -274,7 +274,7 @@ let leftSource = RemoteKeyHardwareSuppressionPolicy.usage(RemoteButton.left.hidU
 let staleLeftMapping = HIDUsageMapping(source: leftSource, destination: 0x0000_0007_0000_00E1)
 let hardwareKeyMappings = RemoteKeyHardwareSuppressionPolicy.applying(
     to: [unrelatedMapping, staleLeftMapping],
-    actions: AppSettings.vibeCodingBindings,
+    actions: AppSettings.codexBindings,
     buttonsWithSecondaryActions: []
 )
 check(
@@ -290,7 +290,7 @@ check(
 check(
     RemoteKeyHardwareSuppressionPolicy.applying(
         to: hardwareKeyMappings,
-        actions: AppSettings.vibeCodingBindings,
+        actions: AppSettings.codexBindings,
         buttonsWithSecondaryActions: []
     ) == hardwareKeyMappings,
     "RC003 hardware suppression is idempotent"

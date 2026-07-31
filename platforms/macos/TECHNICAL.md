@@ -21,7 +21,7 @@
 | --- | --- |
 | `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、左键设置窗口、右键菜单、关于与版本菜单项、Sparkle 手动更新入口 |
 | `SettingsView.swift` | macOS 26 Liquid Glass 设置界面、状态展示、音频选择、按键映射和权限入口 |
-| `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex 听写和 UI 状态的协调层 |
+| `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex / WorkBuddy 语音和 UI 状态的协调层 |
 | `XiaomiBluetoothBridge.swift` | CoreBluetooth 扫描、连接、能力协商、语音会话和自动重连 |
 | `ATVVProtocol.swift` | ATVV 命令、能力解析、IMA/DVI ADPCM 解码、帧累积与 PCM 后处理 |
 | `AudioOutput.swift` | CoreAudio 输出设备枚举和 16 kHz 单声道语音写入 |
@@ -91,15 +91,15 @@ ATVV 通道为：
 | 电源 | Escape |
 | 音量 + / - | 系统音量增减 |
 
-用户还可以选择系统静音、播放/暂停，或打开 Codex、Claude、cmux、微信、Cursor、Xcode、Slack、企业微信、网易云音乐、Chrome、Safari 和 Zed。选择器只显示当前已安装的预置应用，但会保留后来被卸载的已有映射；应用启动动作不会重复创建实例。
+用户还可以选择系统静音、播放/暂停，或打开 Codex、WorkBuddy、Claude、cmux、微信、Cursor、Xcode、Slack、企业微信、网易云音乐、Chrome、Safari 和 Zed。选择器只显示当前已安装的预置应用，但会保留后来被卸载的已有映射；应用启动动作不会重复创建实例。
 
 方向、返回和音量等标准动作由 macOS 原生处理长按重复；仅在独占模式下由应用生成重复事件。打开应用动作不重复。普通实体按键活动状态会发布到 SwiftUI，用于高亮遥控器示意图和定位映射行。
 
-## 语音键与 Codex 听写
+## 语音键与应用预设
 
-小米遥控器开始发送 ATVV 音频时，应用按下 Codex 的 `⌃⇧D`；语音停止后释放快捷键。设备级按键屏蔽同时覆盖遥控器语音键对应的 F5 usage，避免 F5 原生动作进入前台应用，但不会影响遥控器固件启动 ATVV 音频。
+Codex 预设在小米遥控器开始发送 ATVV 音频时按下 `⌃⇧D`，语音停止后释放快捷键。WorkBuddy 预设则在开始和停止边沿各点按一次 `⌘D`，把 WorkBuddy 的开关型录音转换成遥控器的“按住说、松开停”。设备级按键屏蔽同时覆盖遥控器语音键对应的 F5 usage，避免 F5 原生动作进入前台应用，但不会影响遥控器固件启动 ATVV 音频。
 
-启用自定义按键映射时应用设备级屏蔽；语音流开始和结束通过 `VoiceFunctionKeyLatch` 保证每个会话只产生一次 Codex 快捷键按下和一次释放。关闭自定义映射或退出应用时恢复启动前的目标按键映射，同时保留运行期间其他来源的映射变化。
+启用自定义按键映射时应用设备级屏蔽；语音流开始和结束通过 `VoiceFunctionKeyLatch` 保证每个会话只处理一次开始和停止边沿。关闭自定义映射或退出应用时恢复启动前的目标按键映射，同时保留运行期间其他来源的映射变化。
 
 ## 菜单栏与窗口
 
@@ -128,7 +128,7 @@ xcrun swift test
 ./scripts/verify-app.sh
 ```
 
-`scripts/test.sh` 运行协议/策略自检并编译完整应用。Swift Testing 覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、小米遥控器设备级屏蔽、Codex 听写和测试音。
+`scripts/test.sh` 运行协议/策略自检并编译完整应用。Swift Testing 覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、小米遥控器设备级屏蔽、Codex / WorkBuddy 语音触发和测试音。
 
 构建并启动应用：
 

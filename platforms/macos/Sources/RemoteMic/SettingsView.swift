@@ -173,7 +173,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "使用状态",
-                    subtitle: "三个项目全部就绪后，就可以直接用遥控器操作 Codex"
+                    subtitle: "三个项目全部就绪后，就可以直接用遥控器操作 \(settings.voiceShortcutProfile.displayName)"
                 )
 
                 GlassEffectContainer(spacing: 14) {
@@ -216,14 +216,16 @@ struct SettingsView: View {
                     DeviceStatusStep(
                         symbol: "waveform",
                         title: "麦克风键",
-                        detail: model.isStreaming ? "正在把语音传给 Codex" : "按住说话，松开停止",
+                        detail: model.isStreaming
+                            ? "正在把语音传给 \(settings.voiceShortcutProfile.displayName)"
+                            : "按住说话，松开停止",
                         badge: model.isStreaming ? "语音中" : "已就绪",
                         tint: model.isStreaming ? .orange : .blue
                     )
                     DeviceStatusStep(
                         symbol: "mic.fill",
-                        title: "Codex 听写",
-                        detail: "快捷键 ⌃⇧D",
+                        title: "\(settings.voiceShortcutProfile.displayName) 语音",
+                        detail: "快捷键 \(settings.voiceShortcutProfile.shortcutDisplayName)",
                         badge: voiceTriggerBadge,
                         tint: .blue
                     )
@@ -261,7 +263,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("这样使用")
                         .font(.headline)
-                    UsageInstructionRow(number: 1, text: "按电源键，打开或切换到 Codex")
+                    UsageInstructionRow(
+                        number: 1,
+                        text: "按电源键，打开或切换到 \(settings.voiceShortcutProfile.displayName)"
+                    )
                     UsageInstructionRow(number: 2, text: "按住麦克风键说话，松开后停止听写")
                     UsageInstructionRow(number: 3, text: "按中间确认键发送；返回键删除文字")
                 }
@@ -362,9 +367,14 @@ struct SettingsView: View {
                         selectedRemoteButton = .ok
                     }
                     .buttonStyle(.glass)
-                    Button("Vibe Coding 预设") {
-                        settings.applyVibeCodingPreset()
-                        selectedRemoteButton = .home
+                    Button("Codex 预设") {
+                        settings.applyCodexPreset()
+                        selectedRemoteButton = .power
+                    }
+                    .buttonStyle(.glassProminent)
+                    Button("WorkBuddy 预设") {
+                        settings.applyWorkBuddyPreset()
+                        selectedRemoteButton = .power
                     }
                     .buttonStyle(.glassProminent)
                 }
@@ -376,7 +386,8 @@ struct SettingsView: View {
                         RemoteControlDiagram(
                             selectedButton: $selectedRemoteButton,
                             activeButtons: model.activeRemoteButtons,
-                            voiceActive: model.isStreaming
+                            voiceActive: model.isStreaming,
+                            voiceProfile: settings.voiceShortcutProfile
                         )
                         .onReceive(model.$activeRemoteButtons) { buttons in
                             if let button = RemoteButton.allCases.first(where: { buttons.contains($0) }) {
@@ -739,11 +750,7 @@ struct SettingsView: View {
     }
 
     private var voiceTriggerBadge: String {
-        if model.voiceShortcutStatus.contains("已释放") ||
-            model.voiceShortcutStatus.contains("⌃⇧D") {
-            return "已启用"
-        }
-        return "准备中"
+        model.voiceShortcutStatus.contains("需要辅助功能") ? "需要授权" : "已启用"
     }
 
     private var isVirtualMicrophoneSelected: Bool {
@@ -760,7 +767,7 @@ struct SettingsView: View {
 
     private var virtualMicrophoneDetail: String {
         if isVirtualMicrophoneSelected {
-            return "遥控器语音会直接进入 Codex，不会从扬声器播放"
+            return "遥控器语音会直接进入 \(settings.voiceShortcutProfile.displayName)，不会从扬声器播放"
         }
         if model.hasDoubaoAudioDevice {
             return "已找到 MiRemoteV 2ch，正在自动选择"
@@ -1083,6 +1090,7 @@ private struct RemoteControlDiagram: View {
     @Binding var selectedButton: RemoteButton
     let activeButtons: Set<RemoteButton>
     let voiceActive: Bool
+    let voiceProfile: VoiceShortcutProfile
 
     private let canvasSize = CGSize(width: 174, height: 352)
 
@@ -1111,7 +1119,9 @@ private struct RemoteControlDiagram: View {
             .frame(width: canvasSize.width, height: canvasSize.height)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Text("点击或按下实物按键定位映射；麦克风键固定为 Codex 按住听写。")
+            Text(
+                "点击或按下实物按键定位映射；麦克风键当前控制 \(voiceProfile.displayName) 语音。"
+            )
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -1161,8 +1171,11 @@ private struct RemoteControlDiagram: View {
             .contentShape(Circle())
             .frame(width: canvasSize.width * width, height: canvasSize.height * height)
             .position(x: canvasSize.width * x, y: canvasSize.height * y)
-            .help("按住时触发 Codex ⌃⇧D 听写并桥接遥控器语音；松开时停止")
+            .help(
+                "按住时触发 \(voiceProfile.displayName) \(voiceProfile.shortcutDisplayName) " +
+                    "并桥接遥控器语音；松开时停止"
+            )
             .accessibilityElement()
-            .accessibilityLabel(Text("Codex 按住听写键，固定核心功能"))
+            .accessibilityLabel(Text("\(voiceProfile.displayName) 语音键，固定核心功能"))
     }
 }

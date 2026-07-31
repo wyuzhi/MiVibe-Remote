@@ -13,6 +13,8 @@
   ·
   <a href="docs/codex-setup.md">Codex 设置</a>
   ·
+  <a href="docs/workbuddy-setup.md">WorkBuddy 设置</a>
+  ·
   <a href="docs/reference-audit.md">上游复用与技术说明</a>
 </p>
 
@@ -20,8 +22,8 @@
 
 MiVibe Remote 复用遥控器内置麦克风和实体按键，让你不必一直坐在键盘前：
 
-- 电源键：打开或切换到 Codex，也可以改成 Cursor、Claude、Xcode 等应用；
-- 麦克风键：按住开始 Codex 听写，松开停止并转写；
+- 电源键：按当前预设打开或切换到 Codex / WorkBuddy，也可以改成其他应用；
+- 麦克风键：按住开始当前应用的语音输入，松开停止并转写；
 - 中间确认键：发送当前输入；
 - 返回键：删除光标前的文字；
 - 方向键：移动光标或浏览内容；
@@ -33,8 +35,8 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
-- macOS：`MiVibe-Remote-0.1.3.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.3.exe`
+- macOS：`MiVibe-Remote-0.1.4.dmg`
+- Windows：`MiVibeRemoteSetup-0.1.4.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
 > 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
@@ -52,7 +54,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 26 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.3.dmg`。
+1. 下载并打开 `MiVibe-Remote-0.1.4.dmg`。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
 4. 首次启动后，在“权限”页面依次允许蓝牙、输入监控和辅助功能。
@@ -68,7 +70,7 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.3.exe`。
+1. 下载并运行 `MiVibeRemoteSetup-0.1.4.exe`。
 2. 安装器会从 VB-Audio 官方地址下载并验证 VB-CABLE，然后完成配置。
 3. 在 Codex 中选择 `CABLE Output` 作为麦克风。
 4. 确认 Codex 的“按住听写”快捷键为右 Alt。
@@ -77,9 +79,17 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 ## 默认按键
 
-| 遥控器按键 | 默认动作 |
+MiVibe Remote 提供两个一键预设，默认使用 Codex 预设：
+
+| 预设 | 电源键 | 语音键 |
+| --- | --- | --- |
+| Codex 预设 | 打开/切换到 Codex | macOS 按住 `⌃⇧D`；Windows 按住右 Alt |
+| WorkBuddy 预设 | 打开/切换到 WorkBuddy | macOS 在开始/结束时点按 `⌘D`；Windows 点按 `Ctrl+D` |
+
+两套预设的其他按键相同：
+
+| 遥控器按键 | 动作 |
 | --- | --- |
-| 电源 | 打开/切换到 Codex |
 | 麦克风 | 按住听写，松开停止 |
 | 确定 | Return / 发送 |
 | 返回 | Delete / 退格 |
@@ -89,7 +99,7 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 | TV | 应用切换 |
 | 音量 | 系统音量 |
 
-在“按键”页面可以修改普通按键；点击“Vibe Coding 预设”可恢复上表。
+在“按键”页面点击“Codex 预设”或“WorkBuddy 预设”即可切换；普通按键仍可继续自定义。
 
 ## 工作原理
 
@@ -98,12 +108,12 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
   → Bluetooth LE ATVV / IMA ADPCM
   → MiVibe Remote 解码
   → 虚拟麦克风
-  → Codex 听写
+  → Codex / WorkBuddy 语音输入
 
 小米遥控器实体按键
   → HID 报告
   → MiVibe Remote 映射
-  → Codex / 当前应用
+  → Codex / WorkBuddy / 当前应用
 ```
 
 本项目不重复实现已经验证的硬件协议：
@@ -145,7 +155,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.3 `
+  -Version 0.1.4 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

@@ -62,6 +62,71 @@ struct VoiceFunctionKeyLatchTests {
         ))
     }
 
+    @Test func codexProfileHoldsOnPressAndReleasesOnStop() {
+        var posted: [(CGKeyCode, CGEventFlags, Bool)] = []
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .codex,
+                transition: transition,
+                accessibilityTrusted: { true },
+                keyStatePoster: {
+                    posted.append(($0, $1, $2))
+                    return true
+                },
+                keyTapPoster: { _, _ in
+                    Issue.record("Codex must use held key state, not toggle taps")
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted[0].0 == 2)
+        #expect(posted[0].1 == [.maskControl, .maskShift])
+        #expect(posted[0].2)
+        #expect(!posted[1].2)
+    }
+
+    @Test func workBuddyProfileTapsCommandDAtBothStreamEdges() {
+        var posted: [(CGKeyCode, CGEventFlags)] = []
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .workBuddy,
+                transition: transition,
+                accessibilityTrusted: { true },
+                keyStatePoster: { _, _, _ in
+                    Issue.record("WorkBuddy must use toggle taps, not a held key")
+                    return true
+                },
+                keyTapPoster: {
+                    posted.append(($0, $1))
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted.allSatisfy { $0.0 == 2 && $0.1 == [.maskCommand] })
+    }
+
+    @Test func voiceProfilesFailClosedWithoutAccessibility() {
+        for profile in [VoiceShortcutProfile.codex, .workBuddy] {
+            #expect(!KeyboardInjector.sendVoiceShortcut(
+                profile: profile,
+                transition: .press,
+                accessibilityTrusted: { false },
+                keyStatePoster: { _, _, _ in
+                    Issue.record("No held key may be posted without accessibility")
+                    return true
+                },
+                keyTapPoster: { _, _ in
+                    Issue.record("No toggle key may be posted without accessibility")
+                    return true
+                }
+            ))
+        }
+    }
+
     @Test func aSecondMacInstanceYieldsToTheExistingProcess() {
         #expect(!SingleInstancePolicy.shouldYield(currentPID: 42, runningPIDs: [42]))
         #expect(SingleInstancePolicy.shouldYield(currentPID: 42, runningPIDs: [42, 99]))

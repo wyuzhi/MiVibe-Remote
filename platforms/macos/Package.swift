@@ -13,7 +13,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "RemoteMic",
+            dependencies: ["ObjCExceptionCatcher"],
             path: "Sources/RemoteMic"
+        ),
+        .target(
+            name: "ObjCExceptionCatcher",
+            path: "Sources/ObjCExceptionCatcher",
+            publicHeadersPath: "include"
         ),
         .testTarget(
             name: "RemoteMicTests",

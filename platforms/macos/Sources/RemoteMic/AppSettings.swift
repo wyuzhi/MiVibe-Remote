@@ -1,6 +1,32 @@
 import Combine
 import Foundation
 
+enum VoiceShortcutProfile: String, Codable, Equatable {
+    case codex
+    case workBuddy
+
+    var displayName: String {
+        switch self {
+        case .codex: return "Codex"
+        case .workBuddy: return "WorkBuddy"
+        }
+    }
+
+    var shortcutDisplayName: String {
+        switch self {
+        case .codex: return "⌃⇧D"
+        case .workBuddy: return "⌘D"
+        }
+    }
+
+    var readyStatus: String {
+        switch self {
+        case .codex: return "等待语音键；Codex 使用按住型 ⌃⇧D"
+        case .workBuddy: return "等待语音键；WorkBuddy 使用开关型 ⌘D"
+        }
+    }
+}
+
 final class AppSettings: ObservableObject {
     private enum Keys {
         static let gainDB = "gainDB"
@@ -11,6 +37,7 @@ final class AppSettings: ObservableObject {
         static let buttonShortcuts = "buttonShortcuts"
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let peripheralIdentifier = "peripheralIdentifier"
+        static let voiceShortcutProfile = "voiceShortcutProfile"
     }
 
     private let defaults: UserDefaults
@@ -25,6 +52,10 @@ final class AppSettings: ObservableObject {
 
     @Published var customMappingEnabled: Bool {
         didSet { defaults.set(customMappingEnabled, forKey: Keys.customMappingEnabled) }
+    }
+
+    @Published var voiceShortcutProfile: VoiceShortcutProfile {
+        didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
     }
 
     @Published var buttonBindings: [RemoteButton: ButtonAction] {
@@ -62,6 +93,9 @@ final class AppSettings: ObservableObject {
         } else {
             customMappingEnabled = true
         }
+        voiceShortcutProfile = defaults.string(forKey: Keys.voiceShortcutProfile)
+            .flatMap(VoiceShortcutProfile.init(rawValue:))
+            ?? .codex
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),
@@ -73,7 +107,7 @@ final class AppSettings: ObservableObject {
                 })
             ) { _, saved in saved }
             buttonBindings = savedBindings == Self.legacyVibeCodingBindings
-                ? Self.vibeCodingBindings
+                ? Self.codexBindings
                 : savedBindings
         } else {
             buttonBindings = Self.defaultBindings
@@ -179,14 +213,24 @@ final class AppSettings: ObservableObject {
     }
 
     func resetBindings() {
+        voiceShortcutProfile = .codex
         buttonBindings = Self.defaultBindings
         buttonShortcuts = [:]
         secondaryButtonBindings = [:]
     }
 
-    func applyVibeCodingPreset() {
+    func applyCodexPreset() {
         customMappingEnabled = true
-        buttonBindings = Self.vibeCodingBindings
+        voiceShortcutProfile = .codex
+        buttonBindings = Self.codexBindings
+        buttonShortcuts = [:]
+        secondaryButtonBindings = [:]
+    }
+
+    func applyWorkBuddyPreset() {
+        customMappingEnabled = true
+        voiceShortcutProfile = .workBuddy
+        buttonBindings = Self.workBuddyBindings
         buttonShortcuts = [:]
         secondaryButtonBindings = [:]
     }
@@ -237,10 +281,15 @@ final class AppSettings: ObservableObject {
         .menu: .escape,
     ]) { _, vibeAction in vibeAction }
 
-    static let vibeCodingBindings: [RemoteButton: ButtonAction] = standardBindings.merging([
+    static let codexBindings: [RemoteButton: ButtonAction] = standardBindings.merging([
         .power: .openCodex,
         .menu: .escape,
-    ]) { _, vibeAction in vibeAction }
+    ]) { _, presetAction in presetAction }
 
-    static let defaultBindings = vibeCodingBindings
+    static let workBuddyBindings: [RemoteButton: ButtonAction] = standardBindings.merging([
+        .power: .openWorkBuddy,
+        .menu: .escape,
+    ]) { _, presetAction in presetAction }
+
+    static let defaultBindings = codexBindings
 }

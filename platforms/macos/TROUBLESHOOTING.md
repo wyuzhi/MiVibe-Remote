@@ -2,7 +2,7 @@
 
 > 上游历史文档：协议排障仍可参考，但其中“无线麦”和 `Remote-Mic-*` 文件名属于上游版本。MiVibe 当前发行名称见本目录 `README.md`。
 
-本文适用于 MiVibe Remote 0.1.3。请先确认 Mac 为 Apple Silicon，系统版本为 macOS 26 或更高。
+本文适用于 MiVibe Remote 0.1.4。请先确认 Mac 为 Apple Silicon，系统版本为 macOS 26 或更高。
 
 ## 找不到或连不上遥控器
 
@@ -64,7 +64,16 @@
 1. 确认蓝牙状态已经显示连接成功；
 2. 退出并重新启动无线麦，让设备映射重新应用；
 3. 确认 Codex 的按住听写快捷键是 `Control + Shift + D`；
-4. 观察“连接”页面中的“Codex 听写”状态。
+4. 观察“连接”页面中的“Codex 语音”状态。
+
+## WorkBuddy 只能开始录音或没有收到遥控器语音
+
+1. 在“按键”页面重新点击“WorkBuddy 预设”；
+2. 确认 WorkBuddy 的“切换语音录制”快捷键仍为默认 `Command + D`；
+3. 如果 WorkBuddy 没有单独的麦克风选择项，在“系统设置 → 声音 → 输入”中选择
+   `MiRemoteV 2ch`；
+4. 先让 WorkBuddy 保持在前台，再按住遥控器语音键说话，松开后等待转写；
+5. 观察“连接”页面中的“WorkBuddy 语音”状态，开始和结束应分别显示一次 `⌘D` 点按。
 
 MiVibe 退出时会恢复启动前的小米遥控器按键映射。
 
@@ -75,7 +84,7 @@ MiVibe 退出时会恢复启动前的小米遥控器按键映射。
 可使用同一 Release 提供的 `.sha256` 文件核对 DMG：
 
 ```bash
-shasum -a 256 -c MiVibe-Remote-0.1.3.dmg.sha256
+shasum -a 256 -c MiVibe-Remote-0.1.4.dmg.sha256
 ```
 
 ## 查看日志

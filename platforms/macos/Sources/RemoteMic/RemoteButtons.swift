@@ -198,6 +198,7 @@ struct ConfiguredButtonAction: Codable, Equatable {
 enum PresetApplication: String, CaseIterable, Identifiable {
     case remoteMic
     case codex
+    case workBuddy
     case claude
     case cmux
     case weChat
@@ -216,6 +217,7 @@ enum PresetApplication: String, CaseIterable, Identifiable {
         switch self {
         case .remoteMic: return "MiVibe Remote"
         case .codex: return "Codex"
+        case .workBuddy: return "WorkBuddy"
         case .claude: return "Claude"
         case .cmux: return "cmux"
         case .weChat: return "微信"
@@ -234,6 +236,7 @@ enum PresetApplication: String, CaseIterable, Identifiable {
         switch self {
         case .remoteMic: return "com.mivibe.remote"
         case .codex: return "com.openai.codex"
+        case .workBuddy: return "com.workbuddy.workbuddy"
         case .claude: return "com.anthropic.claudefordesktop"
         case .cmux: return "com.cmuxterm.app"
         case .weChat: return "com.tencent.xinWeChat"
@@ -277,6 +280,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     case customShortcut
     case openRemoteMic
     case openCodex
+    case openWorkBuddy
     case openClaude
     case openCmux
     case openWeChat
@@ -311,6 +315,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .customShortcut: return "自定义快捷键"
         case .openRemoteMic: return "打开 MiVibe Remote"
         case .openCodex: return "打开 Codex"
+        case .openWorkBuddy: return "打开 WorkBuddy"
         case .openClaude: return "打开 Claude"
         case .openCmux: return "打开 cmux"
         case .openWeChat: return "打开微信"
@@ -329,6 +334,7 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .openRemoteMic: return .remoteMic
         case .openCodex: return .codex
+        case .openWorkBuddy: return .workBuddy
         case .openClaude: return .claude
         case .openCmux: return .cmux
         case .openWeChat: return .weChat

@@ -84,8 +84,10 @@
    - 语音键按住时触发 Codex 的全局“按住即可听写”；
    - 松开语音键即结束听写；
    - 确定键发送 Return。
-2. Vibe Coding 预设：
-   - Codex、Cursor、Claude Code、VS Code、终端等。
+2. 应用工作流预设：
+   - Codex 预设使用按住型语音快捷键；
+   - WorkBuddy 预设使用开关型语音快捷键；
+   - Cursor、Claude Code、VS Code、终端等仍可通过自定义按键打开。
    - 用户仍可覆盖每个按键。
 3. Windows 的“打开应用”动作：
    - Windows 上游底层共享 mapper 已支持 command/process；
@@ -108,10 +110,10 @@
 MiVibe Remote
 ├── macOS：fork remote-mic-app
 │   ├── 复用 BLE / ATVV / HID / CoreAudio / 驱动 / UI
-│   └── 新增 Codex 启动动作、Vibe Coding 预设和引导
+│   └── 新增 Codex / WorkBuddy 启动动作、预设和引导
 └── Windows：fork remote-bridge-hub 的 Xiaomi 独立包
     ├── 复用 WinRT / ATVV / HID / VB-CABLE / 安装器
-    └── 新增打开 Codex、Vibe Coding 预设和引导
+    └── 新增打开 Codex / WorkBuddy、双预设和引导
 ```
 
 这样能最大化复用已验证代码，也保留各平台处理蓝牙、HID、音频驱动和权限的最佳实现。

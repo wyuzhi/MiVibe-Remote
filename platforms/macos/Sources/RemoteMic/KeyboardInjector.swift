@@ -15,6 +15,8 @@ enum KeyboardInjector {
     static let contextualMenuKeyCode: CGKeyCode = 110
     static let codexDictationKeyCode: CGKeyCode = 2
     static let codexDictationFlags: CGEventFlags = [.maskControl, .maskShift]
+    static let workBuddyVoiceKeyCode: CGKeyCode = 2
+    static let workBuddyVoiceFlags: CGEventFlags = [.maskCommand]
     private static let eventSource = CGEventSource(stateID: .hidSystemState)
 
     static var isAccessibilityTrusted: Bool {
@@ -39,6 +41,31 @@ enum KeyboardInjector {
     ) -> Bool {
         guard accessibilityTrusted() else { return false }
         return keyStatePoster(codexDictationKeyCode, codexDictationFlags, held)
+    }
+
+    @discardableResult
+    static func sendVoiceShortcut(
+        profile: VoiceShortcutProfile,
+        transition: VoiceFunctionKeyTransition,
+        accessibilityTrusted: () -> Bool = { isAccessibilityTrusted },
+        keyStatePoster: (CGKeyCode, CGEventFlags, Bool) -> Bool = {
+            postKeyState(code: $0, flags: $1, isDown: $2)
+        },
+        keyTapPoster: (CGKeyCode, CGEventFlags) -> Bool = {
+            postKeyPress(code: $0, flags: $1)
+        }
+    ) -> Bool {
+        guard accessibilityTrusted() else { return false }
+        switch profile {
+        case .codex:
+            return keyStatePoster(
+                codexDictationKeyCode,
+                codexDictationFlags,
+                transition == .press
+            )
+        case .workBuddy:
+            return keyTapPoster(workBuddyVoiceKeyCode, workBuddyVoiceFlags)
+        }
     }
 
     @discardableResult
@@ -111,7 +138,7 @@ enum KeyboardInjector {
             if let shortcut {
                 keyPoster(CGKeyCode(shortcut.keyCode), shortcut.cgEventFlags)
             }
-        case .openRemoteMic, .openCodex, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
+        case .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed:
             break
         }
@@ -208,6 +235,23 @@ enum KeyboardInjector {
         event.flags = flags
         event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
         event.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private static func postKeyPress(
+        code: CGKeyCode,
+        flags: CGEventFlags
+    ) -> Bool {
+        guard let source = eventSource,
+              let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)
+        else { return false }
+        down.flags = flags
+        up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
         return true
     }
 

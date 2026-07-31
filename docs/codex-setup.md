@@ -15,7 +15,7 @@ MiVibe Remote 不内置第二套语音识别。它复用 Codex 已有的全局�
 2. MiVibe Remote 会自动选择 `MiRemoteV 2ch` 虚拟麦克风。
 3. 在 Codex 的“设置 → 语音”中选择同一个 `MiRemoteV 2ch` 作为麦克风输入。
 4. 确认 Codex 的“设置 → 键盘快捷键 → 按住听写”是 `Control + Shift + D`。
-5. 全新安装已默认启用 Vibe Coding 映射；如果之前改过按键，可在“按键”页面点击“Vibe Coding 预设”恢复。
+5. 全新安装已默认启用 Codex 映射；如果之前改过按键，可在“按键”页面点击“Codex 预设”恢复。
 
 MiVibe Remote 会把 RC003 语音键的按下与松开同步为 Codex 的
 `Control + Shift + D` 长按听写：
@@ -35,7 +35,7 @@ MiVibe Remote 会把 RC003 语音键的按下与松开同步为 Codex 的
 2. 在 Codex 的“设置 → 语音”中选择 `CABLE Output` 作为麦克风输入。
 3. 在 Codex 的“设置 → 键盘快捷键”中，把“按住听写快捷键”设为右 Alt。
 4. 在 MiVibe Remote 设置中：
-   - 全新安装无需切换预设；如果之前改过按键，点击“Vibe Coding 预设”恢复；
+   - 全新安装无需切换预设；如果之前改过按键，点击“Codex 预设”恢复；
    - 确认语音键为右 Alt；
    - 触发方式选择“按住型”；
    - 保存并应用。
@@ -43,7 +43,7 @@ MiVibe Remote 会把 RC003 语音键的按下与松开同步为 Codex 的
 Windows 桥会在 RC003 语音会话期间持续按住右 Alt，并把 ATVV 音频解码、重采样后写入
 VB-CABLE。
 
-## 默认 Vibe Coding 按键
+## 默认 Codex 按键
 
 | 遥控器按键 | 动作 |
 | --- | --- |

@@ -19,20 +19,22 @@ from PIL import Image, ImageTk
 from .xiaomi_config import (
     APP_VERSION,
     BUTTONS,
+    CODEX_VOICE_TRIGGER_MODE,
     CONFIG_PATH,
     DEFAULT_VOICE_HOTKEY,
     KEYS_CONFIG_PATH,
     MAPPING_SCHEMA_VERSION,
-    VIBE_CODING_VOICE_TRIGGER_MODE,
+    WORKBUDDY_VOICE_TRIGGER_MODE,
     apply_remote_identity,
+    codex_button_bindings,
     hotkey_tokens,
     load_config,
     load_keys_config,
     resolve_hotkey_virtual_keys,
     save_config,
     save_keys_config,
-    vibe_coding_button_bindings,
     voice_hotkey_from_configs,
+    workbuddy_button_bindings,
 )
 
 
@@ -580,6 +582,9 @@ class XiaomiSettingsWindow:
         self.working_bindings = copy.deepcopy(
             self.keys_config.get("button_bindings", {})
         )
+        self.working_preset = str(self.config.get("active_preset", "codex"))
+        if self.working_preset not in {"codex", "workbuddy"}:
+            self.working_preset = "codex"
         if self.config.get("voice_shortcut_enabled", True) or self.working_bindings.get("mic"):
             try:
                 voice_keys = voice_hotkey_from_configs(self.config, self.keys_config)
@@ -959,8 +964,14 @@ class XiaomiSettingsWindow:
         ).pack(side="right", padx=(0, 9))
         ttk.Button(
             footer,
-            text="Vibe Coding 预设",
-            command=self.apply_vibe_coding_preset,
+            text="WorkBuddy 预设",
+            command=self.apply_workbuddy_preset,
+            style="Quiet.TButton",
+        ).pack(side="right", padx=(0, 9))
+        ttk.Button(
+            footer,
+            text="Codex 预设",
+            command=self.apply_codex_preset,
             style="Quiet.TButton",
         ).pack(side="right", padx=(0, 9))
 
@@ -1283,7 +1294,11 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def restore_selected(self) -> None:
-        defaults = vibe_coding_button_bindings()
+        defaults = (
+            workbuddy_button_bindings()
+            if self.working_preset == "workbuddy"
+            else codex_button_bindings()
+        )
         self.working_bindings[self.selected_id] = copy.deepcopy(
             defaults[self.selected_id]
         )
@@ -1295,22 +1310,35 @@ class XiaomiSettingsWindow:
     def restore_all(self) -> None:
         if not messagebox.askyesno(APP_NAME, "恢复所有按键的默认映射？"):
             return
-        self.working_bindings = vibe_coding_button_bindings()
+        self.working_preset = "codex"
+        self.working_bindings = codex_button_bindings()
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
-            "按住型" if VIBE_CODING_VOICE_TRIGGER_MODE == "hold" else "开关型"
+            "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已恢复默认，尚未保存")
         self.select_button(self.selected_id)
 
-    def apply_vibe_coding_preset(self) -> None:
-        self.working_bindings = vibe_coding_button_bindings()
+    def apply_codex_preset(self) -> None:
+        self.working_preset = "codex"
+        self.working_bindings = codex_button_bindings()
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
-            "按住型" if VIBE_CODING_VOICE_TRIGGER_MODE == "hold" else "开关型"
+            "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
-        self.save_status_var.set("已载入 Vibe Coding 预设，点击“保存并应用”后生效")
-        self.selected_id = "home"
+        self.save_status_var.set("已载入 Codex 预设，点击“保存并应用”后生效")
+        self.selected_id = "power"
+        self.select_button(self.selected_id)
+
+    def apply_workbuddy_preset(self) -> None:
+        self.working_preset = "workbuddy"
+        self.working_bindings = workbuddy_button_bindings()
+        self.voice_enabled.set(True)
+        self.voice_trigger_mode.set(
+            "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
+        )
+        self.save_status_var.set("已载入 WorkBuddy 预设，点击“保存并应用”后生效")
+        self.selected_id = "power"
         self.select_button(self.selected_id)
 
     def save(self) -> None:
@@ -1342,6 +1370,7 @@ class XiaomiSettingsWindow:
             self.config["voice_shortcut_enabled"] = voice_enabled
             self.config["voice_trigger_mode"] = voice_mode
             self.config["voice_hotkey"] = "+".join(mic_keys)
+            self.config["active_preset"] = self.working_preset
             self.config["raw_mapping_enabled"] = True
 
             self.keys_config["mapping_schema_version"] = MAPPING_SCHEMA_VERSION

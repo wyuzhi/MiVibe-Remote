@@ -2,6 +2,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+import ObjCExceptionCatcher
 
 struct AudioDeviceInfo: Identifiable, Equatable {
     let id: AudioDeviceID
@@ -205,25 +206,56 @@ final class VirtualAudioOutput {
             return false
         }
 
+        self.engine = engine
+        self.player = player
+        selectedDevice = device
+        observeConfigurationChanges(for: engine)
+
         do {
             engine.prepare()
             try engine.start()
-            player.play()
-            self.engine = engine
-            self.player = player
-            selectedDevice = device
-            observeConfigurationChanges(for: engine)
+            guard engine.isRunning else {
+                return failConfiguration(
+                    message: "音频设备正在变化，稍后自动重试",
+                    logReason: "engine_stopped_during_start",
+                    target: device
+                )
+            }
+            if let exception = ObjectiveCExceptionGuard.run({ player.play() }) {
+                return failConfiguration(
+                    message: "音频设备正在变化，稍后自动重试",
+                    logReason: "player_start_exception exception=\(exception)",
+                    target: device
+                )
+            }
+            guard engine.isRunning, player.isPlaying else {
+                return failConfiguration(
+                    message: "音频设备正在变化，稍后自动重试",
+                    logReason: "player_or_engine_stopped_after_start",
+                    target: device
+                )
+            }
             status = "语音输出：\(device.name)"
             AppLogger.shared.write("AUDIO READY target={\(CoreAudioDeviceCatalog.deviceDiagnostic(device))} state={\(diagnosticState())}")
             return true
         } catch {
-            status = "启动音频输出失败：\(error.localizedDescription)"
-            AppLogger.shared.write(
-                "AUDIO ERROR start_failed=\(error.localizedDescription) " +
-                    "target={\(CoreAudioDeviceCatalog.deviceDiagnostic(device))} state={\(diagnosticState())}"
+            return failConfiguration(
+                message: "启动音频输出失败：\(error.localizedDescription)",
+                logReason: "engine_start_error error=\(error.localizedDescription)",
+                target: device
             )
-            return false
         }
+    }
+
+    func isHealthy(configuredDeviceUID: String, availableDevices: [AudioDeviceInfo]) -> Bool {
+        AudioRecoveryPolicy.routeIsHealthy(
+            configuredDeviceUID: configuredDeviceUID,
+            availableDeviceUIDs: Set(availableDevices.map(\.uid)),
+            selectedDeviceUID: selectedDevice?.uid,
+            engineRunning: engine?.isRunning == true,
+            playerPlaying: player?.isPlaying == true,
+            actualOutputDeviceUID: currentOutputDevice()?.uid
+        )
     }
 
     var isReadyForTestTone: Bool {
@@ -295,7 +327,13 @@ final class VirtualAudioOutput {
         guard let player, engine?.isRunning == true else { return }
         player.stop()
         player.reset()
-        player.play()
+        if let exception = ObjectiveCExceptionGuard.run({ player.play() }) {
+            AppLogger.shared.write(
+                "AUDIO PLAYER restart_exception=\(exception) state={\(basicDiagnosticState())}"
+            )
+            stop()
+            onConfigurationChange?()
+        }
     }
 
     func stop() {
@@ -371,5 +409,44 @@ final class VirtualAudioOutput {
         guard now.timeIntervalSince(lastRejectedWriteLogDate) >= 1 else { return }
         lastRejectedWriteLogDate = now
         AppLogger.shared.write("AUDIO WRITE rejected count=\(rejectedWriteCount) state={\(basicDiagnosticState())}")
+    }
+
+    private func failConfiguration(
+        message: String,
+        logReason: String,
+        target: AudioDeviceInfo
+    ) -> Bool {
+        status = message
+        AppLogger.shared.write(
+            "AUDIO CONFIGURE failed reason=\(logReason) " +
+                "target={\(CoreAudioDeviceCatalog.deviceDiagnostic(target))} " +
+                "state={\(diagnosticState())}"
+        )
+        stop()
+        return false
+    }
+}
+
+enum ObjectiveCExceptionGuard {
+    static func run(_ body: () -> Void) -> String? {
+        MiVibeCatchObjectiveCException(body) as String?
+    }
+}
+
+enum AudioRecoveryPolicy {
+    static func routeIsHealthy(
+        configuredDeviceUID: String,
+        availableDeviceUIDs: Set<String>,
+        selectedDeviceUID: String?,
+        engineRunning: Bool,
+        playerPlaying: Bool,
+        actualOutputDeviceUID: String?
+    ) -> Bool {
+        !configuredDeviceUID.isEmpty &&
+            availableDeviceUIDs.contains(configuredDeviceUID) &&
+            selectedDeviceUID == configuredDeviceUID &&
+            engineRunning &&
+            playerPlaying &&
+            actualOutputDeviceUID == configuredDeviceUID
     }
 }
