@@ -1,4 +1,4 @@
-MiVibe Remote v0.1.7
+MiVibe Remote v0.1.8
 
 把小米蓝牙遥控器 2 变成 Windows 上的 Vibe Coding 控制器。
 
@@ -13,7 +13,7 @@ VB-CABLE 由 VB-Audio（https://vb-audio.com/Cable/）提供，采用 Donationwa
 
 推荐设置：
 1. 打开“按键与语音设置”。
-2. 全新安装默认启用“Codex 预设”；需要操作 WorkBuddy 时点击“WorkBuddy 预设”，再点击“保存并应用”。
+2. 全新安装默认启用“Codex 预设”；可切换“WorkBuddy 预设”或“微信预设”，再点击“保存并应用”。微信语音键会按住 Ctrl+Win，松开后转成文字。
 3. 电源键会打开当前预设应用，确定键发送，方向键导航，返回键退格，菜单键为 Escape。
 4. Codex 预设把语音键设为“按住型”右 Alt；请在 Codex 中把“按住即可听写”的全局快捷键设为右 Alt，并把麦克风输入选择为 `CABLE Output`。
 5. WorkBuddy 预设把语音键设为“开关型”Ctrl+D；若 WorkBuddy 没有单独的麦克风选择项，请在 Windows 声音设置中把输入设备切换为 `CABLE Output`。

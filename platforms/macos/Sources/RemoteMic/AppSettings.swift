@@ -4,11 +4,13 @@ import Foundation
 enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
     case codex
     case workBuddy
+    case weChat
 
     var displayName: String {
         switch self {
         case .codex: return "Codex"
         case .workBuddy: return "WorkBuddy"
+        case .weChat: return "微信"
         }
     }
 
@@ -16,6 +18,7 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
         switch self {
         case .codex: return "⌃⇧D"
         case .workBuddy: return "⌘D"
+        case .weChat: return "Fn（按住）"
         }
     }
 
@@ -23,6 +26,7 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
         switch self {
         case .codex: return "等待语音键；Codex 使用按住型 ⌃⇧D"
         case .workBuddy: return "等待语音键；WorkBuddy 使用开关型 ⌘D"
+        case .weChat: return "等待语音键；微信使用按住 Fn 语音输入文字"
         }
     }
 
@@ -45,7 +49,7 @@ final class AppSettings: ObservableObject {
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let peripheralIdentifier = "peripheralIdentifier"
         static let voiceShortcutProfile = "voiceShortcutProfile"
-        static let temporaryVoiceInputSwitchEnabled = "temporaryVoiceInputSwitchEnabled"
+        static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
     }
 
     private let defaults: UserDefaults
@@ -66,13 +70,8 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
     }
 
-    @Published var temporaryVoiceInputSwitchEnabled: Bool {
-        didSet {
-            defaults.set(
-                temporaryVoiceInputSwitchEnabled,
-                forKey: Keys.temporaryVoiceInputSwitchEnabled
-            )
-        }
+    @Published var headsetCompatibilityEnabled: Bool {
+        didSet { defaults.set(headsetCompatibilityEnabled, forKey: Keys.headsetCompatibilityEnabled) }
     }
 
     @Published var buttonBindings: [RemoteButton: ButtonAction] {
@@ -113,11 +112,9 @@ final class AppSettings: ObservableObject {
         voiceShortcutProfile = defaults.string(forKey: Keys.voiceShortcutProfile)
             .flatMap(VoiceShortcutProfile.init(rawValue:))
             ?? .codex
-        temporaryVoiceInputSwitchEnabled = defaults.object(
-            forKey: Keys.temporaryVoiceInputSwitchEnabled
-        ) == nil
+        headsetCompatibilityEnabled = defaults.object(forKey: Keys.headsetCompatibilityEnabled) == nil
             ? true
-            : defaults.bool(forKey: Keys.temporaryVoiceInputSwitchEnabled)
+            : defaults.bool(forKey: Keys.headsetCompatibilityEnabled)
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),
@@ -249,6 +246,10 @@ final class AppSettings: ObservableObject {
         applyPreset(.workBuddy)
     }
 
+    func applyWeChatPreset() {
+        applyPreset(.weChat)
+    }
+
     @discardableResult
     func cyclePreset() -> VoiceShortcutProfile {
         let nextProfile = voiceShortcutProfile.next
@@ -307,6 +308,8 @@ final class AppSettings: ObservableObject {
             return codexBindings
         case .workBuddy:
             return workBuddyBindings
+        case .weChat:
+            return weChatBindings
         }
     }
 
@@ -363,6 +366,11 @@ final class AppSettings: ObservableObject {
 
     static let workBuddyBindings: [RemoteButton: ButtonAction] = standardBindings.merging([
         .power: .openWorkBuddy,
+        .menu: .escape,
+    ]) { _, presetAction in presetAction }
+
+    static let weChatBindings: [RemoteButton: ButtonAction] = standardBindings.merging([
+        .power: .openWeChat,
         .menu: .escape,
     ]) { _, presetAction in presetAction }
 

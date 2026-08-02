@@ -25,6 +25,7 @@ from .xiaomi_config import (
     KEYS_CONFIG_PATH,
     MAPPING_SCHEMA_VERSION,
     WORKBUDDY_VOICE_TRIGGER_MODE,
+    WECHAT_VOICE_TRIGGER_MODE,
     apply_remote_identity,
     codex_button_bindings,
     hotkey_tokens,
@@ -34,6 +35,7 @@ from .xiaomi_config import (
     save_config,
     save_keys_config,
     voice_hotkey_from_configs,
+    wechat_button_bindings,
     workbuddy_button_bindings,
 )
 
@@ -585,7 +587,7 @@ class XiaomiSettingsWindow:
             self.keys_config.get("button_bindings", {})
         )
         self.working_preset = str(self.config.get("active_preset", "codex"))
-        if self.working_preset not in {"codex", "workbuddy"}:
+        if self.working_preset not in {"codex", "workbuddy", "wechat"}:
             self.working_preset = "codex"
         if self.config.get("voice_shortcut_enabled", True) or self.working_bindings.get("mic"):
             try:
@@ -972,6 +974,12 @@ class XiaomiSettingsWindow:
         ).pack(side="right", padx=(0, 9))
         ttk.Button(
             footer,
+            text="微信预设",
+            command=self.apply_wechat_preset,
+            style="Quiet.TButton",
+        ).pack(side="right", padx=(0, 9))
+        ttk.Button(
+            footer,
             text="WorkBuddy 预设",
             command=self.apply_workbuddy_preset,
             style="Quiet.TButton",
@@ -1316,11 +1324,11 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def restore_selected(self) -> None:
-        defaults = (
-            workbuddy_button_bindings()
-            if self.working_preset == "workbuddy"
-            else codex_button_bindings()
-        )
+        defaults = {
+            "codex": codex_button_bindings,
+            "workbuddy": workbuddy_button_bindings,
+            "wechat": wechat_button_bindings,
+        }.get(self.working_preset, codex_button_bindings)()
         self.working_bindings[self.selected_id] = copy.deepcopy(
             defaults[self.selected_id]
         )
@@ -1364,6 +1372,19 @@ class XiaomiSettingsWindow:
             "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已载入 WorkBuddy 预设，点击“保存并应用”后生效")
+        self.selected_id = "power"
+        self.select_button(self.selected_id)
+
+    def apply_wechat_preset(self) -> None:
+        cycle_bindings = self._cycle_bindings()
+        self.working_preset = "wechat"
+        self.working_bindings = wechat_button_bindings()
+        self.working_bindings.update(cycle_bindings)
+        self.voice_enabled.set(True)
+        self.voice_trigger_mode.set(
+            "按住型" if WECHAT_VOICE_TRIGGER_MODE == "hold" else "开关型"
+        )
+        self.save_status_var.set("已载入微信预设，点击“保存并应用”后生效")
         self.selected_id = "power"
         self.select_button(self.selected_id)
 

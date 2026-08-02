@@ -65,7 +65,8 @@ struct RemoteButtonsTests {
 
     @Test func cyclePresetMovesInDeclaredOrderAndWrapsAround() {
         #expect(VoiceShortcutProfile.codex.next == .workBuddy)
-        #expect(VoiceShortcutProfile.workBuddy.next == .codex)
+        #expect(VoiceShortcutProfile.workBuddy.next == .weChat)
+        #expect(VoiceShortcutProfile.weChat.next == .codex)
     }
 
     @Test func buttonActionsKeepRawValueCodableCompatibility() throws {
@@ -228,6 +229,30 @@ struct RemoteButtonsTests {
         #expect(restored.action(for: .power) == .openWorkBuddy)
     }
 
+    @Test func weChatPresetOpensWeChatAndUsesSystemDictation() throws {
+        #expect(AppSettings.weChatBindings[.power] == .openWeChat)
+        #expect(AppSettings.weChatBindings[.home] == .showDesktop)
+        #expect(AppSettings.weChatBindings[.ok] == .returnKey)
+        #expect(AppSettings.weChatBindings[.back] == .deleteBackward)
+        #expect(AppSettings.weChatBindings[.menu] == .escape)
+
+        let suiteName = "RemoteMicTests.weChatPreset.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        settings.applyWeChatPreset()
+        #expect(settings.activePreset == .weChat)
+        #expect(settings.voiceShortcutProfile == .weChat)
+        #expect(settings.action(for: .power) == .openWeChat)
+        #expect(settings.action(for: .ok) == .returnKey)
+        #expect(settings.action(for: .back) == .deleteBackward)
+
+        let restored = AppSettings(defaults: defaults)
+        #expect(restored.voiceShortcutProfile == .weChat)
+        #expect(restored.action(for: .power) == .openWeChat)
+    }
+
     @Test func cyclePresetKeepsEveryConfiguredCycleTrigger() throws {
         let suiteName = "RemoteMicTests.cyclePreset.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -248,38 +273,43 @@ struct RemoteButtonsTests {
         ).action == .cyclePreset)
         #expect(settings.activePreset == .workBuddy)
 
+        #expect(settings.cyclePreset() == .weChat)
+        #expect(settings.action(for: .power) == .openWeChat)
+        #expect(settings.action(for: .tv) == .cyclePreset)
+        #expect(settings.activePreset == .weChat)
+
         #expect(settings.cyclePreset() == .codex)
         #expect(settings.action(for: .power) == .openCodex)
         #expect(settings.action(for: .tv) == .cyclePreset)
         #expect(settings.activePreset == .codex)
     }
 
-    @Test func customizedPresetIsClearlyReportedAndTemporaryVoiceInputSwitchDefaultsOn() throws {
+    @Test func customizedPresetIsClearlyReportedAndPersistentVirtualInputDefaultsOn() throws {
         let suite = "RemoteButtonsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
 
         #expect(settings.activePreset == .codex)
-        #expect(settings.temporaryVoiceInputSwitchEnabled)
+        #expect(settings.headsetCompatibilityEnabled)
 
         settings.setAction(.openWorkBuddy, for: .tv)
         #expect(settings.activePreset == nil)
 
-        settings.temporaryVoiceInputSwitchEnabled = false
+        settings.headsetCompatibilityEnabled = false
         let restored = AppSettings(defaults: defaults)
-        #expect(!restored.temporaryVoiceInputSwitchEnabled)
+        #expect(!restored.headsetCompatibilityEnabled)
     }
 
-    @Test func temporaryVoiceInputSwitchUsesTheNewDefaultAfterLegacyCompatibilityMode() throws {
-        let suite = "RemoteButtonsTests.temporaryInputMigration-\(UUID().uuidString)"
+    @Test func persistentVirtualInputKeepsTheVersion016Preference() throws {
+        let suite = "RemoteButtonsTests.persistentInput-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(false, forKey: "headsetCompatibilityEnabled")
 
         let settings = AppSettings(defaults: defaults)
 
-        #expect(settings.temporaryVoiceInputSwitchEnabled)
+        #expect(!settings.headsetCompatibilityEnabled)
     }
 
     @Test func migratesTheOriginalHomeKeyVibePresetToThePowerKey() throws {

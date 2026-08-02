@@ -3,7 +3,7 @@ import Testing
 
 @Suite("MiVibe virtual microphone")
 struct DoubaoAudioDeviceTests {
-    @Test func temporaryInputLeaseRestoresTheUsersPreviousMicrophone() {
+    @Test func appLifetimeInputLeaseRestoresTheUsersPreviousMicrophoneOnExit() {
         let builtIn = AudioDeviceInfo(id: 1, uid: "BuiltIn", name: "MacBook Pro 麦克风")
         let virtual = AudioDeviceInfo(id: 2, uid: "MiRemoteV", name: "MiRemoteV 2ch")
         var current: AudioDeviceInfo? = builtIn
@@ -28,7 +28,7 @@ struct DoubaoAudioDeviceTests {
         #expect(!lease.isActive)
     }
 
-    @Test func temporaryInputLeasePreservesAMicrophoneChosenDuringVoice() {
+    @Test func appLifetimeInputLeasePreservesANewerFallbackAfterSystemRouteChange() {
         let builtIn = AudioDeviceInfo(id: 1, uid: "BuiltIn", name: "MacBook Pro 麦克风")
         let virtual = AudioDeviceInfo(id: 2, uid: "MiRemoteV", name: "MiRemoteV 2ch")
         let headset = AudioDeviceInfo(id: 3, uid: "Headset", name: "蓝牙耳机麦克风")

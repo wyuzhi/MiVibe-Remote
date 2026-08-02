@@ -1,7 +1,7 @@
 import Foundation
 
-/// Holds the beginning of a remote voice session while macOS changes the default
-/// input and the target app opens its capture stream.
+/// Holds the brief beginning of a remote voice session while the target app
+/// opens its capture stream. The virtual microphone itself is already running.
 struct VoiceAudioPreRoll {
     private(set) var isBuffering = false
     private(set) var bufferedSamples: [Int16] = []

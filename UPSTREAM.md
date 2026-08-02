@@ -38,4 +38,6 @@ Windows input injection, VB-CABLE routing, packaging, and tests.
 - Driver license: GPL-3.0
 
 MiRemoteVoice is reviewed as a smaller independent implementation and is not
-vendored into this repository.
+vendored wholesale into this repository. Its MIT-licensed `AudioPipe.swift`
+design informs the MacBook-microphone passthrough and remote-wins source
+selection used by the macOS application.

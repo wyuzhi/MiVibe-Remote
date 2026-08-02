@@ -288,14 +288,25 @@ final class DefaultInputDeviceLease {
 
 final class VirtualAudioOutput {
     private var engine: AVAudioEngine?
-    private var player: AVAudioPlayerNode?
+    private var remotePlayer: AVAudioPlayerNode?
+    private var builtInPlayer: AVAudioPlayerNode?
     private var engineConfigurationObserver: NSObjectProtocol?
     private var engineConfigurationGeneration: UInt64 = 0
     private var rejectedWriteCount = 0
     private var lastRejectedWriteLogDate = Date.distantPast
+    private let sourceStateLock = NSLock()
+    private var remoteActive = false
+    private var testToneActive = false
+    private let builtInCapture = BuiltInMicrophoneCapture()
     private let sourceFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 16_000,
+        channels: 1,
+        interleaved: false
+    )!
+    private let builtInFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 48_000,
         channels: 1,
         interleaved: false
     )!
@@ -303,11 +314,26 @@ final class VirtualAudioOutput {
     private(set) var selectedDevice: AudioDeviceInfo?
     private(set) var status = "未选择语音输出设备"
     var onConfigurationChange: (() -> Void)?
+    var onBuiltInMicrophoneStateChange: ((BuiltInMicrophoneCapture.State) -> Void)?
+
+    init() {
+        builtInCapture.onSamples = { [weak self] samples, sampleRate in
+            self?.enqueueBuiltIn(samples: samples, sampleRate: sampleRate)
+        }
+        builtInCapture.onStateChange = { [weak self] state in
+            self?.onBuiltInMicrophoneStateChange?(state)
+            AppLogger.shared.write("AUDIO BUILTIN_CAPTURE state=\(state.statusText)")
+        }
+    }
+
+    func retryBuiltInMicrophoneCapture() {
+        builtInCapture.retry()
+    }
 
     @discardableResult
     func configure(deviceUID: String) -> Bool {
         let previousState = diagnosticState()
-        stop()
+        stopEngine()
         guard !deviceUID.isEmpty else {
             status = "未选择语音输出设备"
             AppLogger.shared.write("AUDIO CONFIGURE skipped reason=no_selected_device previous={\(previousState)}")
@@ -328,10 +354,14 @@ final class VirtualAudioOutput {
         )
 
         let engine = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: sourceFormat)
+        let remotePlayer = AVAudioPlayerNode()
+        let builtInPlayer = AVAudioPlayerNode()
 
+        // Select the virtual device before constructing the graph. If the graph is
+        // connected first, AVAudioEngine initially adopts the system default output
+        // format (often the 16 kHz Bluetooth hands-free profile). Changing it to the
+        // 48 kHz virtual device afterwards tears the running graph down and can leave
+        // voice buffers permanently rejected.
         guard let outputUnit = engine.outputNode.audioUnit else {
             status = "无法打开 CoreAudio 输出单元"
             AppLogger.shared.write("AUDIO CONFIGURE failed reason=no_output_unit target={\(CoreAudioDeviceCatalog.deviceDiagnostic(device))}")
@@ -355,8 +385,14 @@ final class VirtualAudioOutput {
             return false
         }
 
+        engine.attach(remotePlayer)
+        engine.attach(builtInPlayer)
+        engine.connect(remotePlayer, to: engine.mainMixerNode, format: sourceFormat)
+        engine.connect(builtInPlayer, to: engine.mainMixerNode, format: builtInFormat)
+
         self.engine = engine
-        self.player = player
+        self.remotePlayer = remotePlayer
+        self.builtInPlayer = builtInPlayer
         selectedDevice = device
         observeConfigurationChanges(for: engine)
 
@@ -370,14 +406,17 @@ final class VirtualAudioOutput {
                     target: device
                 )
             }
-            if let exception = ObjectiveCExceptionGuard.run({ player.play() }) {
+            if let exception = ObjectiveCExceptionGuard.run({
+                remotePlayer.play()
+                builtInPlayer.play()
+            }) {
                 return failConfiguration(
                     message: "音频设备正在变化，稍后自动重试",
                     logReason: "player_start_exception exception=\(exception)",
                     target: device
                 )
             }
-            guard engine.isRunning, player.isPlaying else {
+            guard engine.isRunning, remotePlayer.isPlaying, builtInPlayer.isPlaying else {
                 return failConfiguration(
                     message: "音频设备正在变化，稍后自动重试",
                     logReason: "player_or_engine_stopped_after_start",
@@ -385,6 +424,7 @@ final class VirtualAudioOutput {
                 )
             }
             status = "语音输出：\(device.name)"
+            builtInCapture.start()
             AppLogger.shared.write("AUDIO READY target={\(CoreAudioDeviceCatalog.deviceDiagnostic(device))} state={\(diagnosticState())}")
             return true
         } catch {
@@ -402,7 +442,7 @@ final class VirtualAudioOutput {
             availableDeviceUIDs: Set(availableDevices.map(\.uid)),
             selectedDeviceUID: selectedDevice?.uid,
             engineRunning: engine?.isRunning == true,
-            playerPlaying: player?.isPlaying == true,
+            playerPlaying: remotePlayer?.isPlaying == true && builtInPlayer?.isPlaying == true,
             actualOutputDeviceUID: currentOutputDevice()?.uid
         )
     }
@@ -418,15 +458,18 @@ final class VirtualAudioOutput {
     @discardableResult
     func playTestTone(completion: @escaping (Bool) -> Void) -> Bool {
         guard isReadyForTestTone,
-              let player,
+              let remotePlayer,
               let buffer = makeBuffer(samples: TestToneGenerator.samples(sampleRate: sourceFormat.sampleRate))
         else { return false }
-        player.scheduleBuffer(
+        setTestToneActive(true)
+        flushPlayer(builtInPlayer)
+        remotePlayer.scheduleBuffer(
             buffer,
             at: nil,
             options: [],
             completionCallbackType: .dataPlayedBack
-        ) { callbackType in
+        ) { [weak self] callbackType in
+            self?.setTestToneActive(false)
             completion(callbackType == .dataPlayedBack)
         }
         return true
@@ -435,7 +478,8 @@ final class VirtualAudioOutput {
     /// Flushes any buffer currently queued on the player node (including an in-flight test
     /// tone) so real RC003 voice audio scheduled right after this call is not delayed behind it.
     func cancelTestTone() {
-        flushPlayer()
+        setTestToneActive(false)
+        flushPlayer(remotePlayer)
     }
 
     private func makeBuffer(samples: [Int16]) -> AVAudioPCMBuffer? {
@@ -456,7 +500,11 @@ final class VirtualAudioOutput {
 
     @discardableResult
     func enqueue(samples: [Int16]) -> Bool {
-        guard let player, engine?.isRunning == true, let buffer = makeBuffer(samples: samples) else {
+        guard isRemoteActive,
+              let remotePlayer,
+              engine?.isRunning == true,
+              let buffer = makeBuffer(samples: samples)
+        else {
             logRejectedWrite()
             return false
         }
@@ -464,15 +512,140 @@ final class VirtualAudioOutput {
             AppLogger.shared.write("AUDIO WRITE resumed rejected_count=\(rejectedWriteCount) state={\(basicDiagnosticState())}")
             rejectedWriteCount = 0
         }
-        player.scheduleBuffer(buffer)
+        remotePlayer.scheduleBuffer(buffer)
         return true
     }
 
-    func endSession() {
-        flushPlayer()
+    /// Changes the source inside the already-running virtual microphone. No
+    /// CoreAudio default-device change occurs here.
+    func setRemoteActive(_ active: Bool) {
+        sourceStateLock.lock()
+        let changed = remoteActive != active
+        remoteActive = active
+        if active {
+            testToneActive = false
+        }
+        sourceStateLock.unlock()
+        guard changed else { return }
+
+        if active {
+            flushPlayer(builtInPlayer)
+            flushPlayer(remotePlayer)
+        } else {
+            flushPlayer(remotePlayer)
+        }
+        AppLogger.shared.write(
+            active
+                ? "AUDIO SOURCE switched=remote"
+                : "AUDIO SOURCE switched=builtin"
+        )
     }
 
-    private func flushPlayer() {
+    private var isRemoteActive: Bool {
+        sourceStateLock.lock()
+        defer { sourceStateLock.unlock() }
+        return remoteActive
+    }
+
+    private func setTestToneActive(_ active: Bool) {
+        sourceStateLock.lock()
+        testToneActive = active
+        sourceStateLock.unlock()
+    }
+
+    private func enqueueBuiltIn(samples: [Float], sampleRate: Double) {
+        sourceStateLock.lock()
+        let shouldForward = !remoteActive && !testToneActive
+        sourceStateLock.unlock()
+        guard shouldForward,
+              let builtInPlayer,
+              engine?.isRunning == true
+        else { return }
+
+        let resampled = Self.resample(
+            samples,
+            from: sampleRate,
+            to: builtInFormat.sampleRate
+        )
+        guard let buffer = makeBuiltInBuffer(samples: resampled) else { return }
+
+        // Re-check after conversion so a remote press can win even if a capture
+        // callback was already in flight.
+        sourceStateLock.lock()
+        let stillShouldForward = !remoteActive && !testToneActive
+        sourceStateLock.unlock()
+        guard stillShouldForward else { return }
+        builtInPlayer.scheduleBuffer(buffer)
+    }
+
+    private func makeBuiltInBuffer(samples: [Float]) -> AVAudioPCMBuffer? {
+        guard !samples.isEmpty,
+              let buffer = AVAudioPCMBuffer(
+                  pcmFormat: builtInFormat,
+                  frameCapacity: AVAudioFrameCount(samples.count)
+              ),
+              let channel = buffer.floatChannelData?[0]
+        else { return nil }
+        for index in samples.indices {
+            channel[index] = max(-1, min(1, samples[index]))
+        }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        return buffer
+    }
+
+    private static func resample(
+        _ input: [Float],
+        from inputRate: Double,
+        to outputRate: Double
+    ) -> [Float] {
+        guard !input.isEmpty, inputRate > 0, outputRate > 0 else { return [] }
+        guard abs(inputRate - outputRate) >= 1 else { return input }
+        let ratio = outputRate / inputRate
+        let outputCount = max(1, Int((Double(input.count) * ratio).rounded(.down)))
+        var output = [Float](repeating: 0, count: outputCount)
+        for index in 0..<outputCount {
+            let position = Double(index) / ratio
+            let lower = min(Int(position), input.count - 1)
+            let upper = min(lower + 1, input.count - 1)
+            let fraction = Float(position - Double(lower))
+            output[index] = input[lower] + (input[upper] - input[lower]) * fraction
+        }
+        return output
+    }
+
+    func endSession() {
+        flushPlayer(remotePlayer)
+    }
+
+    /// Places a short silent marker after every voice buffer already queued. The
+    /// completion fires only when CoreAudio reports that marker was actually played,
+    /// so callers can release the target app's recording shortcut without guessing
+    /// how much audio remains in AVAudioPlayerNode.
+    @discardableResult
+    func drainSession(
+        trailingSilenceDuration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) -> Bool {
+        let sampleCount = max(
+            1,
+            Int((sourceFormat.sampleRate * trailingSilenceDuration).rounded())
+        )
+        guard let remotePlayer,
+              engine?.isRunning == true,
+              let marker = makeBuffer(samples: Array(repeating: 0, count: sampleCount))
+        else { return false }
+        remotePlayer.scheduleBuffer(
+            marker,
+            at: nil,
+            options: [],
+            completionCallbackType: .dataPlayedBack
+        ) { callbackType in
+            completion(callbackType == .dataPlayedBack)
+        }
+        return true
+    }
+
+    private func flushPlayer(_ player: AVAudioPlayerNode?) {
         guard let player, engine?.isRunning == true else { return }
         player.stop()
         player.reset()
@@ -486,12 +659,23 @@ final class VirtualAudioOutput {
     }
 
     func stop() {
+        builtInCapture.stop()
+        stopEngine()
+    }
+
+    private func stopEngine() {
         removeEngineConfigurationObserver()
-        player?.stop()
+        remotePlayer?.stop()
+        builtInPlayer?.stop()
         engine?.stop()
-        player = nil
+        remotePlayer = nil
+        builtInPlayer = nil
         engine = nil
         selectedDevice = nil
+        sourceStateLock.lock()
+        remoteActive = false
+        testToneActive = false
+        sourceStateLock.unlock()
     }
 
     private func observeConfigurationChanges(for engine: AVAudioEngine) {
@@ -534,7 +718,11 @@ final class VirtualAudioOutput {
     }
 
     private func basicDiagnosticState() -> String {
-        "engine_running=\(engine?.isRunning == true) selected={\(CoreAudioDeviceCatalog.deviceDiagnostic(selectedDevice))}"
+        "engine_running=\(engine?.isRunning == true) " +
+            "remote_player=\(remotePlayer?.isPlaying == true) " +
+            "builtin_player=\(builtInPlayer?.isPlaying == true) " +
+            "source=\(isRemoteActive ? "remote" : "builtin") " +
+            "selected={\(CoreAudioDeviceCatalog.deviceDiagnostic(selectedDevice))}"
     }
 
     private func currentOutputDevice() -> AudioDeviceInfo? {
