@@ -34,7 +34,7 @@ BlackHole remains an optional loopback-device choice. This fork includes `script
 - Reference release: `v1.0.0-beta.2`
 - Application license: MIT
 
-The Doubao compatibility design is informed by MiRemoteVoice: a side-by-side BlackHole-derived device reports its actual audio Device as USB transport so Doubao can enumerate it. This fork reimplements that idea as a pinned, source-built BlackHole patch instead of reusing MiRemoteVoice's version-specific binary replacement script.
+The Doubao compatibility design is informed by MiRemoteVoice: a side-by-side BlackHole-derived device reports its actual audio Device as USB transport so Doubao can enumerate it. The built-in-microphone passthrough and remote-wins source selection also adapt the MIT-licensed `AudioPipe.swift` design, while this project keeps its existing AVAudioEngine output and lifecycle integration. This fork reimplements the driver idea as a pinned, source-built BlackHole patch instead of reusing MiRemoteVoice's version-specific binary replacement script.
 
 ## Product imagery
 

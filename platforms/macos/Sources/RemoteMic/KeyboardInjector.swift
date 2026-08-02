@@ -17,6 +17,9 @@ enum KeyboardInjector {
     static let codexDictationFlags: CGEventFlags = [.maskControl, .maskShift]
     static let workBuddyVoiceKeyCode: CGKeyCode = 2
     static let workBuddyVoiceFlags: CGEventFlags = [.maskCommand]
+    /// WeChat 4.x exposes “语音输入文字（按住 Fn）”. Fn is a modifier and must
+    /// be posted as flags-changed state, not as a normal microphone-key tap.
+    static let weChatFunctionKeyCode: CGKeyCode = 63
     private static let eventSource = CGEventSource(stateID: .hidSystemState)
 
     static var isAccessibilityTrusted: Bool {
@@ -51,6 +54,9 @@ enum KeyboardInjector {
         keyStatePoster: (CGKeyCode, CGEventFlags, Bool) -> Bool = {
             postKeyState(code: $0, flags: $1, isDown: $2)
         },
+        functionKeyStatePoster: (Bool) -> Bool = {
+            postFunctionKeyState(isDown: $0)
+        },
         keyTapPoster: (CGKeyCode, CGEventFlags) -> Bool = {
             postKeyPress(code: $0, flags: $1)
         }
@@ -65,6 +71,8 @@ enum KeyboardInjector {
             )
         case .workBuddy:
             return keyTapPoster(workBuddyVoiceKeyCode, workBuddyVoiceFlags)
+        case .weChat:
+            return functionKeyStatePoster(transition == .press)
         }
     }
 
@@ -233,6 +241,21 @@ enum KeyboardInjector {
               )
         else { return false }
         event.flags = flags
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        event.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private static func postFunctionKeyState(isDown: Bool) -> Bool {
+        guard let source = eventSource,
+              let event = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: weChatFunctionKeyCode,
+                  keyDown: isDown
+              )
+        else { return false }
+        event.type = .flagsChanged
+        event.flags = isDown ? .maskSecondaryFn : []
         event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
         event.post(tap: .cghidEventTap)
         return true

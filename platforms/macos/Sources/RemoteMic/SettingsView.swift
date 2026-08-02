@@ -311,14 +311,18 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Toggle("遥控器语音时临时切换系统麦克风", isOn: Binding(
-                            get: { settings.temporaryVoiceInputSwitchEnabled },
+                        Toggle("常驻虚拟麦克风", isOn: Binding(
+                            get: { settings.headsetCompatibilityEnabled },
                             set: { enabled in
-                                settings.temporaryVoiceInputSwitchEnabled = enabled
-                                model.applyTemporaryVoiceInputSetting()
+                                settings.headsetCompatibilityEnabled = enabled
+                                model.applyHeadsetCompatibilitySetting()
                             }
                         ))
-                        Text("开启后，仅在按住遥控器语音键期间切到 MiRemoteV 2ch；松开并完成尾音传输后，自动恢复你此前选择的 MacBook、耳机或其他麦克风。")
+                        Text("开启后，MiVibe 运行期间固定使用 MiRemoteV 2ch；平时传入 MacBook 麦克风，按住语音键时由遥控器接管。关闭或退出后恢复原麦克风。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Label(model.computerMicrophoneStatus, systemImage: "macbook.and.iphone")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -390,6 +394,7 @@ struct SettingsView: View {
                     .buttonStyle(.glass)
                     presetButton(.codex)
                     presetButton(.workBuddy)
+                    presetButton(.weChat)
                 }
             }
 
@@ -415,7 +420,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("按键动作")
                                     .font(.headline)
-                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy 循环。")
+                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy → 微信循环。")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -665,6 +670,19 @@ struct SettingsView: View {
 
                             permissionRow(
                                 index: 3,
+                                symbol: "mic",
+                                title: "麦克风",
+                                detail: "把 MacBook 内置麦克风转发到常驻的 MiRemoteV 2ch",
+                                state: computerMicrophonePermissionState,
+                                actionTitle: "请求权限"
+                            ) {
+                                model.requestMicrophonePermission()
+                            }
+
+                            Divider().padding(.leading, 62)
+
+                            permissionRow(
+                                index: 4,
                                 symbol: "accessibility",
                                 title: "辅助功能",
                                 detail: "把映射后的按键动作发送给当前应用",
@@ -779,7 +797,7 @@ struct SettingsView: View {
 
     private var virtualMicrophoneDetail: String {
         if isVirtualMicrophoneSelected && model.isAudioReady {
-            return "按住遥控器语音键时临时切换到 MiRemoteV 2ch，松开后恢复原麦克风"
+            return "默认输入保持 MiRemoteV 2ch；电脑麦克风与遥控器在内部无缝切换"
         }
         if isVirtualMicrophoneSelected {
             return model.audioStatus
@@ -792,6 +810,10 @@ struct SettingsView: View {
 
     private var bluetoothPermissionState: PermissionVisualState {
         bluetoothAuthorization == .allowedAlways ? .granted : .pending
+    }
+
+    private var computerMicrophonePermissionState: PermissionVisualState {
+        model.computerMicrophoneStatus.contains("→ MiRemoteV 2ch") ? .granted : .pending
     }
 
     private var currentPresetStatus: String {
@@ -810,6 +832,8 @@ struct SettingsView: View {
                 settings.applyCodexPreset()
             case .workBuddy:
                 settings.applyWorkBuddyPreset()
+            case .weChat:
+                settings.applyWeChatPreset()
             }
             selectedRemoteButton = .power
         }

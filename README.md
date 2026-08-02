@@ -22,7 +22,7 @@
 
 MiVibe Remote 复用遥控器内置麦克风和实体按键，让你不必一直坐在键盘前：
 
-- 电源键：按当前预设打开或切换到 Codex / WorkBuddy，也可以改成其他应用；
+- 电源键：按当前预设打开或切换到 Codex / WorkBuddy / 微信，也可以改成其他应用；
 - 麦克风键：按住开始当前应用的语音输入，松开停止并转写；
 - 中间确认键：发送当前输入；
 - 返回键：删除光标前的文字；
@@ -35,8 +35,8 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
-- macOS：`MiVibe-Remote-0.1.7.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.7.exe`
+- macOS：`MiVibe-Remote-0.1.8.dmg`
+- Windows：`MiVibeRemoteSetup-0.1.8.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
 > 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
@@ -54,10 +54,10 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 26 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.7.dmg`。
+1. 下载并打开 `MiVibe-Remote-0.1.8.dmg`。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
-4. 首次启动后，在“权限”页面依次允许蓝牙、输入监控和辅助功能。
+4. 首次启动后，在“权限”页面依次允许蓝牙、麦克风、输入监控和辅助功能。
 
 关闭设置窗口后，应用仍在后台连接遥控器；点击程序坞中的 MiVibe Remote
 即可重新打开设置。需要彻底退出时，使用左侧“退出应用”、`⌘Q` 或程序坞菜单。
@@ -65,17 +65,17 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 6. 确认 Codex 的“按住听写”快捷键为 `Control + Shift + D`。
 
 MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理解或修改“音频路由”。
-默认开启“遥控器语音时临时切换系统麦克风”：平时尊重你在 macOS 中选择的
-MacBook、耳机或其他麦克风；按住遥控器语音键时临时切到 `MiRemoteV 2ch`，
-松开并完成尾音传输后自动恢复此前的麦克风。切换期间会先缓存开头语音，
-等目标应用的录音流就绪后再连续送入，因此按下语音键即可马上讲话。
-系统默认输出不会被修改。
+默认开启“常驻虚拟麦克风”：MiVibe 运行期间系统输入保持为 `MiRemoteV 2ch`；
+平时由 MacBook 内置麦克风向它供音，按住遥控器语音键时由遥控器在应用内部
+接管，松开后回到 MacBook 麦克风。整个按键过程不再切换系统音频设备，连接
+蓝牙耳机也不会把耳机麦克风带入语音链路。退出 MiVibe 后恢复启动前的输入设备，
+系统默认输出始终不会被修改。
 
 ## Windows 安装
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.7.exe`。
+1. 下载并运行 `MiVibeRemoteSetup-0.1.8.exe`。
 2. 安装器会从 VB-Audio 官方地址下载并验证 VB-CABLE，然后完成配置。
 3. 在 Codex 中选择 `CABLE Output` 作为麦克风。
 4. 确认 Codex 的“按住听写”快捷键为右 Alt。
@@ -104,9 +104,9 @@ MiVibe Remote 提供两个一键预设，默认使用 Codex 预设：
 | TV | 应用切换 |
 | 音量 | 系统音量 |
 
-在“按键”页面点击“Codex 预设”或“WorkBuddy 预设”即可切换；普通按键仍可继续自定义。
+在“按键”页面点击“Codex 预设”“WorkBuddy 预设”或“微信预设”即可切换；普通按键仍可继续自定义。
 也可以把 TV 或其他普通按键设为“循环切换预设”，之后每按一次就按
-Codex → WorkBuddy → Codex 的顺序切换。切换键会在应用新预设时自动保留；以后增加更多
+Codex → WorkBuddy → 微信 → Codex 的顺序切换。切换键会在应用新预设时自动保留；以后增加更多
 预设时，会按照预设列表继续向后循环。
 
 ## 工作原理
@@ -116,12 +116,12 @@ Codex → WorkBuddy → Codex 的顺序切换。切换键会在应用新预设�
   → Bluetooth LE ATVV / IMA ADPCM
   → MiVibe Remote 解码
   → 虚拟麦克风
-  → Codex / WorkBuddy 语音输入
+  → Codex / WorkBuddy / 微信语音输入
 
 小米遥控器实体按键
   → HID 报告
   → MiVibe Remote 映射
-  → Codex / WorkBuddy / 当前应用
+  → Codex / WorkBuddy / 微信 / 当前应用
 ```
 
 本项目不重复实现已经验证的硬件协议：
@@ -163,7 +163,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.7 `
+  -Version 0.1.8 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

@@ -16,7 +16,7 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.7"
+APP_VERSION = "0.1.8"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 MAPPING_SCHEMA_VERSION = 1
 
@@ -24,8 +24,10 @@ CODEX_VOICE_HOTKEY = ("rightalt",)
 CODEX_VOICE_TRIGGER_MODE = "hold"
 WORKBUDDY_VOICE_HOTKEY = ("ctrl", "d")
 WORKBUDDY_VOICE_TRIGGER_MODE = "toggle"
+WECHAT_VOICE_HOTKEY = ("ctrl", "win")
+WECHAT_VOICE_TRIGGER_MODE = "hold"
 DEFAULT_VOICE_HOTKEY = CODEX_VOICE_HOTKEY
-PRESET_ORDER = ("codex", "workbuddy")
+PRESET_ORDER = ("codex", "workbuddy", "wechat")
 
 HOTKEY_VK = {
     "backspace": 0x08,
@@ -187,6 +189,19 @@ WORKBUDDY_START_COMMAND = (
     "catch { Start-Process 'WorkBuddy.exe' } }"
 )
 
+WECHAT_START_COMMAND = (
+    "$app = Get-StartApps | Where-Object { $_.Name -in @('微信', 'WeChat') } "
+    "| Select-Object -First 1; "
+    "if ($app) { Start-Process ('shell:AppsFolder\\' + $app.AppID) } "
+    "else { $paths = @("
+    "(Join-Path $env:ProgramFiles 'Tencent\\WeChat\\WeChat.exe'), "
+    "(Join-Path ${env:ProgramFiles(x86)} 'Tencent\\WeChat\\WeChat.exe'), "
+    "(Join-Path $env:LOCALAPPDATA 'Tencent\\WeChat\\WeChat.exe')"
+    ") | Where-Object { $_ -and (Test-Path $_) }; "
+    "$exe = $paths | Select-Object -First 1; "
+    "if ($exe) { Start-Process $exe } else { Start-Process 'WeChat.exe' } }"
+)
+
 
 def codex_button_bindings() -> dict:
     bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
@@ -236,9 +251,35 @@ def workbuddy_button_bindings() -> dict:
     return bindings
 
 
+def wechat_button_bindings() -> dict:
+    bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
+    bindings["mic"] = [
+        {"type": "hotkey", "keys": list(WECHAT_VOICE_HOTKEY)}
+    ]
+    bindings["power"] = [
+        {
+            "type": "command",
+            "args": [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                WECHAT_START_COMMAND,
+            ],
+            "label": "打开微信",
+        }
+    ]
+    bindings["menu"] = [{"type": "hotkey", "keys": ["esc"]}]
+    return bindings
+
+
 def preset_button_bindings(preset: str) -> dict:
     if preset == "workbuddy":
         return workbuddy_button_bindings()
+    if preset == "wechat":
+        return wechat_button_bindings()
     return codex_button_bindings()
 
 
@@ -271,14 +312,12 @@ def apply_preset_configuration(
 
     bindings = preset_button_bindings(preset)
     bindings.update(cycle_bindings)
-    voice_hotkey = (
-        WORKBUDDY_VOICE_HOTKEY if preset == "workbuddy" else CODEX_VOICE_HOTKEY
-    )
-    voice_trigger_mode = (
-        WORKBUDDY_VOICE_TRIGGER_MODE
-        if preset == "workbuddy"
-        else CODEX_VOICE_TRIGGER_MODE
-    )
+    voice_profiles = {
+        "codex": (CODEX_VOICE_HOTKEY, CODEX_VOICE_TRIGGER_MODE),
+        "workbuddy": (WORKBUDDY_VOICE_HOTKEY, WORKBUDDY_VOICE_TRIGGER_MODE),
+        "wechat": (WECHAT_VOICE_HOTKEY, WECHAT_VOICE_TRIGGER_MODE),
+    }
+    voice_hotkey, voice_trigger_mode = voice_profiles[preset]
     config["active_preset"] = preset
     config["voice_shortcut_enabled"] = True
     config["voice_hotkey"] = "+".join(voice_hotkey)

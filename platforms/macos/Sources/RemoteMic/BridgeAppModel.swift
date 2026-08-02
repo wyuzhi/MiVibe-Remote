@@ -4,12 +4,11 @@ import CoreAudio
 import Foundation
 
 final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
-    static let voiceInputSwitchSettleDelay: TimeInterval = 0.30
     static let voiceCaptureStartupDelay: TimeInterval = 0.20
-    static let voiceDrainDelay: TimeInterval = 0.12
-    static let voicePipelineLatency =
-        voiceInputSwitchSettleDelay + voiceCaptureStartupDelay
-    static let voiceStopDelay = voicePipelineLatency + voiceDrainDelay
+    /// The old AVAudioPlayerNode route supplied an implicit tail buffer. The
+    /// direct CoreAudio route needs explicit silence before ending dictation so
+    /// the target app can consume and finalize the last spoken words.
+    static let voiceDrainDelay: TimeInterval = 0.45
     static let maximumVoicePreRollSamples = 16_000 * 4
 
     let settings = AppSettings()
@@ -25,8 +24,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     @Published private(set) var isPlayingTestTone = false
     @Published private(set) var voiceShortcutStatus = "正在准备语音快捷键"
     @Published private(set) var isAudioReady = false
+    @Published private(set) var computerMicrophoneStatus = "正在准备 MacBook 麦克风"
 
-    private let audioOutput = VirtualAudioOutput()
+    private let audioOutput = StableVirtualAudioOutput()
     private let defaultInputLease = DefaultInputDeviceLease()
     private var testToneGeneration = 0
     private var voiceFunctionKeyLatch = VoiceFunctionKeyLatch()
@@ -34,7 +34,6 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private var voicePreRoll = VoiceAudioPreRoll(
         maximumSampleCount: BridgeAppModel.maximumVoicePreRollSamples
     )
-    private var voiceShortcutStartWorkItem: DispatchWorkItem?
     private var voicePreRollReleaseWorkItem: DispatchWorkItem?
     private var voiceStartGeneration: UInt64 = 0
     private var voiceStopWorkItem: DispatchWorkItem?
@@ -93,12 +92,16 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioOutput.onConfigurationChange = { [weak self] in
             self?.scheduleAudioRecovery(reason: "engine_configuration_change")
         }
+        audioOutput.onBuiltInMicrophoneStateChange = { [weak self] state in
+            self?.computerMicrophoneStatus = state.statusText
+        }
     }
 
     func startIfNeeded() {
         guard !started else { return }
         started = true
         refreshAudioDevices()
+        activatePersistentDefaultInput()
         if !applyAudioSettings(reason: "startup") {
             scheduleAudioRecovery(
                 reason: "startup_failed",
@@ -132,14 +135,13 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
         voiceStartGeneration &+= 1
-        voiceShortcutStartWorkItem?.cancel()
-        voiceShortcutStartWorkItem = nil
         voicePreRollReleaseWorkItem?.cancel()
         voicePreRollReleaseWorkItem = nil
         voicePreRoll.reset()
         stopObservingAudioHardware()
         cancelTestToneIfNeeded(statusMessage: "应用已停止", logReason: "app_stop")
         bluetoothBridge.stop()
+        audioOutput.setRemoteActive(false)
         updateVoiceFunctionKeyState(streaming: false)
         hidMonitor.stop()
         keyHardwareSuppressor.restore()
@@ -291,9 +293,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                         "state={\(self.audioOutput.diagnosticState())}"
                 )
                 self.refreshAudioDevices()
-                if self.isStreaming {
-                    self.activateTemporaryVoiceInput()
-                }
+                self.activatePersistentDefaultInput()
                 let configured: Bool
                 if self.audioOutput.isHealthy(
                     configuredDeviceUID: self.settings.selectedAudioDeviceUID,
@@ -308,6 +308,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                     )
                 } else {
                     configured = self.applyAudioSettings(reason: "recovery_\(reason)")
+                }
+                if configured, self.isStreaming {
+                    self.audioOutput.setRemoteActive(true)
                 }
                 AppLogger.shared.write(
                     "AUDIO RECOVERY completed id=\(generation) reason=\(reason) " +
@@ -479,6 +482,11 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         openPrivacyPane("Privacy_Accessibility")
     }
 
+    func requestMicrophonePermission() {
+        audioOutput.retryBuiltInMicrophoneCapture()
+        openPrivacyPane("Privacy_Microphone")
+    }
+
     func openLogFolder() {
         NSWorkspace.shared.activateFileViewerSelecting([AppLogger.shared.logURL])
     }
@@ -515,34 +523,16 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         voiceStopWorkItem = nil
         voiceStartGeneration &+= 1
         let generation = voiceStartGeneration
-        voiceShortcutStartWorkItem?.cancel()
         voicePreRollReleaseWorkItem?.cancel()
         voicePreRoll.begin()
-        ensureAudioReadyForVoice()
         isStreaming = true
-
-        if voiceFunctionKeyLatch.isHeld {
-            releaseVoicePreRoll(generation: generation, reason: "shortcut_already_held")
-            return
-        }
-
-        let work = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.started,
-                  self.voiceStartGeneration == generation
-            else { return }
-            self.voiceShortcutStartWorkItem = nil
-            self.updateVoiceFunctionKeyState(streaming: true)
-            self.scheduleVoicePreRollRelease(generation: generation)
-        }
-        voiceShortcutStartWorkItem = work
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.voiceInputSwitchSettleDelay,
-            execute: work
-        )
+        ensureAudioReadyForVoice()
+        audioOutput.setRemoteActive(true)
+        updateVoiceFunctionKeyState(streaming: true)
+        scheduleVoicePreRollRelease(generation: generation)
         AppLogger.shared.write(
-            "VOICE STARTUP scheduled input_settle_ms=" +
-                "\(Int(Self.voiceInputSwitchSettleDelay * 1_000))"
+            "VOICE STARTUP source=remote capture_settle_ms=" +
+                "\(Int(Self.voiceCaptureStartupDelay * 1_000))"
         )
     }
 
@@ -550,38 +540,64 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         isStreaming = false
         guard started else {
             voiceStartGeneration &+= 1
-            voiceShortcutStartWorkItem?.cancel()
             voicePreRollReleaseWorkItem?.cancel()
             voicePreRoll.reset()
             audioOutput.endSession()
+            audioOutput.setRemoteActive(false)
             updateVoiceFunctionKeyState(streaming: false)
-            defaultInputLease.restore()
             return
         }
         voiceStopGeneration &+= 1
         let generation = voiceStopGeneration
         voiceStopWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.voiceStopGeneration == generation,
-                  !self.isStreaming
-            else { return }
-            self.audioOutput.endSession()
-            self.updateVoiceFunctionKeyState(streaming: false)
-            self.defaultInputLease.restore()
-            self.voiceStopWorkItem = nil
+        voiceStopWorkItem = nil
+        if voicePreRoll.isBuffering {
             AppLogger.shared.write(
-                "VOICE DRAIN completed delay_ms=\(Int(Self.voiceStopDelay * 1_000))"
+                "VOICE DRAIN waiting_for_preroll samples=\(voicePreRoll.bufferedSamples.count)"
             )
+            return
         }
-        voiceStopWorkItem = work
+        beginVoiceDrain(generation: generation)
+    }
+
+    private func beginVoiceDrain(generation: UInt64) {
+        voiceStopWorkItem?.cancel()
+        voiceStopWorkItem = nil
+        let scheduled = audioOutput.drainSession(
+            trailingSilenceDuration: Self.voiceDrainDelay
+        ) { [weak self] played in
+            DispatchQueue.main.async {
+                self?.completeVoiceDrain(
+                    generation: generation,
+                    reason: played ? "queue_played" : "queue_cancelled"
+                )
+            }
+        }
+        let timeout: TimeInterval = scheduled ? 2 : Self.voiceDrainDelay
+        let safetyWork = DispatchWorkItem { [weak self] in
+            self?.completeVoiceDrain(generation: generation, reason: "safety_timeout")
+        }
+        voiceStopWorkItem = safetyWork
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.voiceStopDelay,
-            execute: work
+            deadline: .now() + timeout,
+            execute: safetyWork
         )
         AppLogger.shared.write(
-            "VOICE DRAIN scheduled delay_ms=\(Int(Self.voiceStopDelay * 1_000))"
+            "VOICE DRAIN waiting_for_queue scheduled=\(scheduled) " +
+                "safety_timeout_ms=\(Int(timeout * 1_000))"
         )
+    }
+
+    private func completeVoiceDrain(generation: UInt64, reason: String) {
+        guard voiceStopGeneration == generation,
+              !isStreaming
+        else { return }
+        voiceStopWorkItem?.cancel()
+        voiceStopWorkItem = nil
+        audioOutput.endSession()
+        audioOutput.setRemoteActive(false)
+        updateVoiceFunctionKeyState(streaming: false)
+        AppLogger.shared.write("VOICE DRAIN completed reason=\(reason)")
     }
 
     func bluetoothBridge(_ bridge: XiaomiBluetoothBridge, didDecode samples: [Int16]) {
@@ -589,21 +605,34 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioOutput.enqueue(samples: readySamples)
     }
 
-    func applyTemporaryVoiceInputSetting() {
-        if !settings.temporaryVoiceInputSwitchEnabled {
+    func applyHeadsetCompatibilitySetting() {
+        if settings.headsetCompatibilityEnabled {
+            activatePersistentDefaultInput()
+        } else {
             defaultInputLease.restore()
-        } else if isStreaming {
-            activateTemporaryVoiceInput()
         }
-        AppLogger.shared.write(
-            "AUDIO TEMPORARY_INPUT enabled=\(settings.temporaryVoiceInputSwitchEnabled) " +
-                "streaming=\(isStreaming) active=\(defaultInputLease.isActive)"
+        scheduleAudioRecovery(
+            reason: "persistent_virtual_input_changed",
+            delay: AudioRecoveryPolicy.retryDelays[0]
         )
+        AppLogger.shared.write(
+            "AUDIO PERSISTENT_INPUT enabled=\(settings.headsetCompatibilityEnabled) " +
+                "active=\(defaultInputLease.isActive)"
+        )
+    }
+
+    private func activatePersistentDefaultInput() {
+        guard settings.headsetCompatibilityEnabled,
+              let device = audioDevices.first(where: {
+                  $0.uid == settings.selectedAudioDeviceUID
+              })
+        else { return }
+        _ = defaultInputLease.activate(target: device)
     }
 
     private func ensureAudioReadyForVoice() {
         refreshAudioDevices()
-        activateTemporaryVoiceInput()
+        activatePersistentDefaultInput()
         guard !audioOutput.isHealthy(
             configuredDeviceUID: settings.selectedAudioDeviceUID,
             availableDevices: audioDevices
@@ -619,15 +648,6 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         )
     }
 
-    private func activateTemporaryVoiceInput() {
-        guard settings.temporaryVoiceInputSwitchEnabled,
-              let device = audioDevices.first(where: {
-                  $0.uid == settings.selectedAudioDeviceUID
-              })
-        else { return }
-        _ = defaultInputLease.activate(target: device)
-    }
-
     private func scheduleVoicePreRollRelease(generation: UInt64) {
         let work = DispatchWorkItem { [weak self] in
             guard let self,
@@ -635,6 +655,16 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                   self.voiceStartGeneration == generation
             else { return }
             self.voicePreRollReleaseWorkItem = nil
+            guard self.audioOutput.isHealthy(
+                configuredDeviceUID: self.settings.selectedAudioDeviceUID,
+                availableDevices: self.audioDevices
+            ) else {
+                self.ensureAudioReadyForVoice()
+                self.audioOutput.setRemoteActive(true)
+                self.scheduleVoicePreRollRelease(generation: generation)
+                return
+            }
+            self.audioOutput.setRemoteActive(true)
             self.releaseVoicePreRoll(generation: generation, reason: "capture_ready")
         }
         voicePreRollReleaseWorkItem = work
@@ -663,6 +693,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             "VOICE PREROLL released reason=\(reason) samples=\(samples.count) " +
                 "duration_ms=\(durationMilliseconds)"
         )
+        if started, !isStreaming {
+            beginVoiceDrain(generation: voiceStopGeneration)
+        }
     }
 
     private func updateVoiceFunctionKeyState(streaming: Bool) {
@@ -692,6 +725,10 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             voiceShortcutStatus = "WorkBuddy ⌘D 已点按；正在录音"
         case (.workBuddy, .release):
             voiceShortcutStatus = "WorkBuddy ⌘D 已再次点按；正在转写"
+        case (.weChat, .press):
+            voiceShortcutStatus = "微信 Fn 已按住；正在语音输入文字"
+        case (.weChat, .release):
+            voiceShortcutStatus = "微信 Fn 已释放；语音输入结束"
         }
         AppLogger.shared.write(
             "VOICE SHORTCUT profile=\(profile.rawValue) edge=\(transition) " +

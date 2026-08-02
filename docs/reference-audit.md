@@ -34,9 +34,9 @@
 - 单击、双击、长按和长按重复。
 - 任意快捷键录制、系统音量/媒体动作、打开 Codex 等常用 App。
 - 语音键按下/释放会发送 Codex 的 `Control + Shift + D` 长按听写快捷键，并与 ATVV 会话同步。
-- CoreAudio 输出到 BlackHole 或 `MiRemoteV 2ch`；启用临时输入切换时，仅在遥控器语音会话期间把虚拟麦克风设为系统默认输入，结束尾音传输后恢复用户此前选择的设备，不修改系统默认输出。
+- CoreAudio 输出到 BlackHole 或 `MiRemoteV 2ch`；当前产品沿用 `0.1.6` 的常驻虚拟输入，并参考 `MiRemoteVoice` 的 AudioPipe 思路，在虚拟设备内部让 MacBook 麦克风与遥控器音频互斥接管，不修改系统默认输出。
 - SwiftUI 设置页、菜单栏、权限引导、日志、测试音、驱动 PKG/DMG 和测试。
-- 当前版本含 61 项 Swift 测试及 36 项自检。
+- 当前版本含 90 项 Swift 测试及 36 项自检。
 
 结论：macOS 端不应重写。直接基于该项目做增量。
 
@@ -110,10 +110,10 @@
 MiVibe Remote
 ├── macOS：fork remote-mic-app
 │   ├── 复用 BLE / ATVV / HID / CoreAudio / 驱动 / UI
-│   └── 新增 Codex / WorkBuddy 启动动作、预设和引导
+│   └── 新增 Codex / WorkBuddy / 微信启动动作、预设和引导
 └── Windows：fork remote-bridge-hub 的 Xiaomi 独立包
     ├── 复用 WinRT / ATVV / HID / VB-CABLE / 安装器
-    └── 新增打开 Codex / WorkBuddy、双预设和引导
+    └── 新增打开 Codex / WorkBuddy / 微信、三预设和引导
 ```
 
 这样能最大化复用已验证代码，也保留各平台处理蓝牙、HID、音频驱动和权限的最佳实现。

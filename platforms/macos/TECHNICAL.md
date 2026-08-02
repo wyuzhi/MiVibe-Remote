@@ -21,7 +21,7 @@
 | --- | --- |
 | `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、左键设置窗口、右键菜单、关于与版本菜单项、Sparkle 手动更新入口 |
 | `SettingsView.swift` | macOS 26 Liquid Glass 设置界面、状态展示、音频选择、按键映射和权限入口 |
-| `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex / WorkBuddy 语音和 UI 状态的协调层 |
+| `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex / WorkBuddy / 微信语音和 UI 状态的协调层 |
 | `XiaomiBluetoothBridge.swift` | CoreBluetooth 扫描、连接、能力协商、语音会话和自动重连 |
 | `ATVVProtocol.swift` | ATVV 命令、能力解析、IMA/DVI ADPCM 解码、帧累积与 PCM 后处理 |
 | `AudioOutput.swift` | CoreAudio 输出设备枚举和 16 kHz 单声道语音写入 |
@@ -54,7 +54,7 @@ ATVV 通道为：
 
 ## 音频输出
 
-`VirtualAudioOutput` 使用 `AVAudioEngine` 和 `AVAudioPlayerNode`，内部格式固定为 16 kHz、单声道、Float32。应用枚举所有具有输出声道的 CoreAudio 设备，并把语音直接写入用户选择的设备。启用临时输入切换时，应用只在遥控器语音会话期间把系统默认输入切到 `MiRemoteV 2ch`，尾音传输结束后恢复会话前的输入设备；空闲期间尊重用户手动选择，系统默认输出始终不变。CoreAudio 路由切换失败时按有界退避自动重试，并在下一次语音开始前执行即时健康检查。
+`StableVirtualAudioOutput` 使用 CoreAudio `AudioDeviceIOProc` 直接打开 `MiRemoteV 2ch`，避免默认输入为虚拟麦克风、默认输出为蓝牙耳机时由 `AVAudioEngine` 触发系统聚合设备和路由重建。它接收两种互斥音源：经 `AVCaptureSession` 明确采集的 MacBook 内置麦克风，以及 16 kHz 遥控器 PCM；两者统一重采样到虚拟设备的 48 kHz 输出。MiVibe 运行期间系统默认输入保持为 `MiRemoteV 2ch`；空闲时只写入电脑麦克风，遥控器语音开始时清空电脑队列并由遥控器接管，尾音实际消费完成后再恢复电脑音源。整个按键过程不修改 CoreAudio 默认输入，系统默认输出始终不变。退出应用时恢复启动前的输入设备。
 
 测试音同样只在内存中生成。只有音频设备已经配置、小米遥控器未在传输语音且没有其他测试音播放时才允许发送；真实语音开始或设备重新配置时会取消测试音，避免阻塞语音缓冲。
 
@@ -97,7 +97,7 @@ ATVV 通道为：
 
 ## 语音键与应用预设
 
-Codex 预设在小米遥控器开始发送 ATVV 音频时按下 `⌃⇧D`，语音停止后释放快捷键。WorkBuddy 预设则在开始和停止边沿各点按一次 `⌘D`，把 WorkBuddy 的开关型录音转换成遥控器的“按住说、松开停”。设备级按键屏蔽同时覆盖遥控器语音键对应的 F5 usage，避免 F5 原生动作进入前台应用，但不会影响遥控器固件启动 ATVV 音频。
+Codex 预设在小米遥控器开始发送 ATVV 音频时按下 `⌃⇧D`，语音停止后释放快捷键。WorkBuddy 预设在开始和停止边沿各点按一次 `⌘D`。微信 4.x 的输入栏明确使用“语音输入文字（按住 Fn）”，所以微信预设在遥控器语音开始时发送 Fn flags-changed 按下状态，停止时释放 Fn，把微信原生的按住型录音与遥控器完全对齐。设备级按键屏蔽同时覆盖遥控器语音键对应的 F5 usage，避免 F5 原生动作进入前台应用，但不会影响遥控器固件启动 ATVV 音频。
 
 启用自定义按键映射时应用设备级屏蔽；语音流开始和结束通过 `VoiceFunctionKeyLatch` 保证每个会话只处理一次开始和停止边沿。关闭自定义映射或退出应用时恢复启动前的目标按键映射，同时保留运行期间其他来源的映射变化。
 
@@ -128,7 +128,7 @@ xcrun swift test
 ./scripts/verify-app.sh
 ```
 
-`scripts/test.sh` 运行协议/策略自检并编译完整应用。Swift Testing 覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、小米遥控器设备级屏蔽、Codex / WorkBuddy 语音触发和测试音。
+`scripts/test.sh` 运行协议/策略自检并编译完整应用。Swift Testing 覆盖 ATVV、蓝牙生命周期、音频设备策略、按键、权限、小米遥控器设备级屏蔽、Codex / WorkBuddy / 微信语音触发和测试音。
 
 构建并启动应用：
 

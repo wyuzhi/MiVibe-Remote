@@ -5,11 +5,8 @@ import Testing
 @Suite("Voice Fn hold")
 struct VoiceFunctionKeyLatchTests {
     @Test func macOSVoicePipelinePreservesBothEdgesOfSpeech() {
-        #expect(BridgeAppModel.voiceInputSwitchSettleDelay == 0.30)
         #expect(BridgeAppModel.voiceCaptureStartupDelay == 0.20)
-        #expect(BridgeAppModel.voiceDrainDelay == 0.12)
-        #expect(BridgeAppModel.voicePipelineLatency == 0.50)
-        #expect(BridgeAppModel.voiceStopDelay == 0.62)
+        #expect(BridgeAppModel.voiceDrainDelay >= 0.45)
         #expect(BridgeAppModel.maximumVoicePreRollSamples >= 16_000)
     }
 
@@ -114,8 +111,33 @@ struct VoiceFunctionKeyLatchTests {
         #expect(posted.allSatisfy { $0.0 == 2 && $0.1 == [.maskCommand] })
     }
 
+    @Test func weChatProfileHoldsFunctionKeyAcrossTheVoiceStream() {
+        var posted: [Bool] = []
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .weChat,
+                transition: transition,
+                accessibilityTrusted: { true },
+                keyStatePoster: { _, _, _ in
+                    Issue.record("WeChat must hold Fn, not use the Codex chord")
+                    return true
+                },
+                functionKeyStatePoster: {
+                    posted.append($0)
+                    return true
+                },
+                keyTapPoster: { _, _ in
+                    Issue.record("WeChat must hold Fn, not tap a normal key")
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted == [true, false])
+    }
+
     @Test func voiceProfilesFailClosedWithoutAccessibility() {
-        for profile in [VoiceShortcutProfile.codex, .workBuddy] {
+        for profile in VoiceShortcutProfile.allCases {
             #expect(!KeyboardInjector.sendVoiceShortcut(
                 profile: profile,
                 transition: .press,

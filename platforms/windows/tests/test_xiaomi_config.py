@@ -64,6 +64,27 @@ class XiaomiConfigTests(unittest.TestCase):
             [0x11, ord("D")],
         )
 
+    def test_wechat_preset_opens_wechat_and_holds_ctrl_win_for_voice(self) -> None:
+        bindings = xiaomi_config.wechat_button_bindings()
+
+        self.assertEqual(bindings["power"][0]["type"], "command")
+        self.assertEqual(bindings["power"][0]["label"], "打开微信")
+        command = bindings["power"][0]["args"][-1]
+        self.assertIn("Get-StartApps", command)
+        self.assertIn("'微信', 'WeChat'", command)
+        self.assertIn("WeChat.exe", command)
+        self.assertEqual(bindings["mic"][0]["keys"], ["ctrl", "win"])
+        self.assertEqual(bindings["ok"][0]["keys"], ["enter"])
+        self.assertEqual(bindings["back"][0]["keys"], ["backspace"])
+        self.assertEqual(bindings["menu"][0]["keys"], ["esc"])
+        self.assertEqual(xiaomi_config.WECHAT_VOICE_TRIGGER_MODE, "hold")
+        self.assertEqual(
+            xiaomi_config.resolve_hotkey_virtual_keys(
+                xiaomi_config.WECHAT_VOICE_HOTKEY
+            ),
+            [0x11, 0x5B],
+        )
+
     def test_cycle_preset_wraps_and_preserves_the_configured_switch_button(self) -> None:
         config = default_config()
         keys = default_keys_config()
@@ -88,8 +109,20 @@ class XiaomiConfigTests(unittest.TestCase):
 
         active = xiaomi_config.cycle_preset_configuration(config, keys)
 
+        self.assertEqual(active, "wechat")
+        self.assertEqual(config["voice_trigger_mode"], "hold")
+        self.assertEqual(config["voice_hotkey"], "ctrl+win")
+        self.assertEqual(
+            keys["button_bindings"]["power"][0]["label"],
+            "打开微信",
+        )
+        self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
+
+        active = xiaomi_config.cycle_preset_configuration(config, keys)
+
         self.assertEqual(active, "codex")
         self.assertEqual(config["voice_trigger_mode"], "hold")
+        self.assertEqual(config["voice_hotkey"], "rightalt")
         self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
 
     def test_normalizes_supported_address_formats(self):
