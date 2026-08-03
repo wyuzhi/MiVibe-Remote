@@ -1,10 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-  [ValidateSet("Install", "Finish", "Repair", "Restore", "Audit")]
+  [ValidateSet("Install", "Finish", "Repair", "Restore", "Audit", "ValidatePackage")]
   [string] $Mode = "Install",
   [Parameter(Mandatory = $true)]
   [string] $AppPath,
-  [string] $DriverZipPath = ""
+  [string] $DriverZipPath = "",
+  [switch] $NonInteractive
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +20,17 @@ $RebootFlag = Join-Path $StateRoot "reboot-required.flag"
 $RunOnceKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
 $RunOnceName = "MiVibeRemoteAudioFinish"
 $ReportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "MiVibeRemote-audio-check.txt"
+
+function Get-Sha256([string] $Path) {
+  $stream = [IO.File]::OpenRead($Path)
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
 
 function Get-VBCableEndpoint([string] $Flow, [string] $Prefix, [string] $Pattern) {
   $root = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\$Flow"
@@ -89,7 +101,7 @@ function Resolve-DriverPackage {
     if (-not (Test-Path -LiteralPath $DriverZipPath -PathType Leaf)) {
       throw "VB-CABLE driver package is missing: $DriverZipPath"
     }
-    $providedHash = (Get-FileHash -LiteralPath $DriverZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $providedHash = Get-Sha256 $DriverZipPath
     if ($providedHash -ne $ExpectedZipSha256) {
       throw "VB-CABLE package hash mismatch"
     }
@@ -97,7 +109,7 @@ function Resolve-DriverPackage {
   }
 
   if (Test-Path -LiteralPath $DownloadedDriverZip -PathType Leaf) {
-    $cachedHash = (Get-FileHash -LiteralPath $DownloadedDriverZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $cachedHash = Get-Sha256 $DownloadedDriverZip
     if ($cachedHash -eq $ExpectedZipSha256) {
       return $DownloadedDriverZip
     }
@@ -121,7 +133,7 @@ function Resolve-DriverPackage {
     } else {
       Invoke-WebRequest -Uri $DriverDownloadUrl -OutFile $temporary -UseBasicParsing -TimeoutSec 600
     }
-    $downloadHash = (Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant()
+    $downloadHash = Get-Sha256 $temporary
     if ($downloadHash -ne $ExpectedZipSha256) {
       throw "VB-CABLE download hash mismatch"
     }
@@ -139,15 +151,26 @@ function Prepare-DriverFiles {
   if (-not $fullDriverRoot.StartsWith($safeRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe driver staging path" }
   if (Test-Path -LiteralPath $fullDriverRoot) { Remove-Item -LiteralPath $fullDriverRoot -Recurse -Force }
   $null = New-Item -ItemType Directory -Force -Path $DriverRoot
-  Expand-Archive -LiteralPath $resolvedDriverZip -DestinationPath $DriverRoot -Force
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [IO.Compression.ZipFile]::ExtractToDirectory($resolvedDriverZip, $DriverRoot)
   $inf = Join-Path $DriverRoot "vbMmeCable64_win10.inf"
   $cat = Join-Path $DriverRoot "vbaudio_cable64_win10.cat"
   $setup = Join-Path $DriverRoot "VBCABLE_Setup_x64.exe"
   if (-not (Test-Path -LiteralPath $inf) -or -not (Test-Path -LiteralPath $cat) -or -not (Test-Path -LiteralPath $setup)) { throw "Official VB-CABLE setup files are missing" }
   $signature = Get-AuthenticodeSignature -LiteralPath $cat
-  if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE catalog signature is invalid" }
+  $catalogSigner = "$($signature.SignerCertificate.Subject)"
+  # Windows hardware catalogs are signed by Microsoft's Hardware
+  # Compatibility Publisher, not by the driver vendor whose setup EXE is
+  # checked separately below.  Requiring BUREL here incorrectly rejected the
+  # genuine catalog from VB-Audio's hash-pinned package.
+  if ($signature.Status -ne "Valid" -or $catalogSigner -notmatch "Microsoft Windows Hardware Compatibility Publisher") {
+    throw "VB-CABLE catalog signature is invalid (status=$($signature.Status); signer=$catalogSigner)"
+  }
   $setupSignature = Get-AuthenticodeSignature -LiteralPath $setup
-  if ($setupSignature.Status -ne "Valid" -or $setupSignature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE official installer signature is invalid" }
+  $setupSigner = "$($setupSignature.SignerCertificate.Subject)"
+  if ($setupSignature.Status -ne "Valid" -or $setupSigner -notmatch "BUREL VINCENT") {
+    throw "VB-CABLE official installer signature is invalid (status=$($setupSignature.Status); signer=$setupSigner)"
+  }
   return $setup
 }
 
@@ -234,6 +257,10 @@ try {
       $result = "Previous microphone restored; VB-CABLE retained"
     }
     "Audit" { if (-not (Test-VBCableReady)) { throw "VB-CABLE is not ready" } }
+    "ValidatePackage" {
+      $validatedSetup = Prepare-DriverFiles
+      $result = "Official VB-CABLE package signatures are valid: $validatedSetup"
+    }
   }
 } catch {
   $result = "WARNING: $($_.Exception.Message)"
@@ -253,7 +280,8 @@ try {
   "Input method or speech recognition: not included"
 ) | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 
-if ($Mode -eq "Repair" -or $exitCode -ne 0) {
+if (-not $NonInteractive -and ($Mode -eq "Repair" -or $exitCode -ne 0)) {
   try { (New-Object -ComObject WScript.Shell).Popup($result,0,$ProductName,64)|Out-Null } catch {}
 }
+Write-Output $result
 exit $exitCode

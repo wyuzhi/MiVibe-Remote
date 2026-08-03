@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [string] $Version = "0.1.9",
+  [string] $Version = "0.1.10",
   [string[]] $Product = @("xiaomi"),
   [switch] $AllowUnsignedCandidate,
   [string] $PythonExecutable = "",
@@ -164,6 +164,16 @@ foreach ($productDefinition in $selectedProducts) {
   }
   if ($productDefinition.Id -eq 'xiaomi' -and $archiveListing -match 'bridges\.(t1|hanvon)') {
     throw "Xiaomi package contains another hardware bridge"
+  }
+  if ($productDefinition.Id -eq 'xiaomi') {
+    foreach ($requiredWinRtModule in @(
+      'winrt.windows.foundation',
+      'winrt.windows.foundation.collections'
+    )) {
+      if ($archiveListing -notmatch [regex]::Escape($requiredWinRtModule)) {
+        throw "Xiaomi package is missing required WinRT module: $requiredWinRtModule"
+      }
+    }
   }
   if ($productDefinition.Id -eq 't1' -and $archiveListing -match 'bridges\.(xiaomi|hanvon|audio\.audio_router)') {
     throw "T1 package contains another bridge or virtual audio router"

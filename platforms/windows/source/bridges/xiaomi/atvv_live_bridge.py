@@ -1498,6 +1498,18 @@ async def run(
             except (NotImplementedError, RuntimeError):
                 pass
 
+    if not args.address:
+        # Keep Raw Input button mapping alive, but do not feed an empty address
+        # into WinRT and create a noisy reconnect loop.  Pair the remote and use
+        # the host's Restart bridge action to repeat ATVV discovery.
+        print(
+            "VOICE BRIDGE WAITING: no Xiaomi ATVV address; "
+            "pair RC001 in Windows Bluetooth settings, then restart bridge",
+            flush=True,
+        )
+        await stop_event.wait()
+        return 0
+
     while not stop_event.is_set():
         try:
             await bridge_once(

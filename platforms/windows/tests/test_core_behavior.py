@@ -27,6 +27,15 @@ from bridges.xiaomi import xiaomi_config
 
 
 class XiaomiCoreBehaviorTests(unittest.TestCase):
+    def test_bluetooth_address_requires_exactly_six_octets(self) -> None:
+        self.assertEqual(
+            xiaomi_core.address_to_int("AA:BB:CC:DD:EE:FF"),
+            0xAABBCCDDEEFF,
+        )
+        for invalid in ("", "AA:BB", "not-an-address"):
+            with self.assertRaisesRegex(ValueError, "invalid Bluetooth address"):
+                xiaomi_core.address_to_int(invalid)
+
     def test_rc001_atvv_service_is_discovered_without_rc003_hardware_id(self) -> None:
         candidate = xiaomi_core.xiaomi_candidate_from_interface(
             "RC001",

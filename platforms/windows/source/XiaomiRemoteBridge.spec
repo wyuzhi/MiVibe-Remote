@@ -41,6 +41,11 @@ a = Analysis(
         "bridges.xiaomi.hid_tap_runtime",
         "bridges.xiaomi.hid_tap_injector",
         "bridges.raw_input_bridge",
+        # WinRT projection extensions resolve these two namespaces at runtime.
+        # They must be explicit because they are separate wheel distributions,
+        # not children shipped by winrt-runtime.
+        "winrt.windows.foundation",
+        "winrt.windows.foundation.collections",
         "numpy",
         "sounddevice",
         "asyncio",

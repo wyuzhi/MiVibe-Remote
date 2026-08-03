@@ -14,6 +14,7 @@ import asyncio
 import json
 import math
 from pathlib import Path
+import re
 import struct
 import time
 import wave
@@ -79,7 +80,10 @@ class AdpcmDecoder:
 
 
 def address_to_int(address: str) -> int:
-    return int(address.replace(":", "").replace("-", ""), 16)
+    compact = re.sub(r"[^0-9a-fA-F]", "", str(address))
+    if len(compact) != 12:
+        raise ValueError(f"invalid Bluetooth address: {address!r}")
+    return int(compact, 16)
 
 
 def buffer_bytes(buffer) -> bytes:
