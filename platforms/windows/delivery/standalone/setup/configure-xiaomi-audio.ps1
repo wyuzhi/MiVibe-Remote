@@ -13,13 +13,18 @@ $ProductName = "MiVibe Remote"
 $DriverDownloadUrl = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"
 $ExpectedZipSha256 = "b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb"
 $StateRoot = Join-Path $env:LOCALAPPDATA "MiVibeRemote\BridgeAudio"
-$DriverRoot = Join-Path $StateRoot "VB-CABLE"
+# Keep each verified upstream package in its own immutable directory. Windows
+# locks a running EXE, so deleting and re-extracting a fixed VB-CABLE directory
+# made a second Repair click fail while the official installer was still open.
+$DriverPackageId = $ExpectedZipSha256.Substring(0, 12)
+$DriverRoot = Join-Path $StateRoot "VB-CABLE-$DriverPackageId"
 $DownloadedDriverZip = Join-Path $StateRoot "VBCABLE_Driver_Pack45.zip"
 $PreviousMicFile = Join-Path $StateRoot "previous-default-microphone.txt"
 $RebootFlag = Join-Path $StateRoot "reboot-required.flag"
 $RunOnceKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
 $RunOnceName = "MiVibeRemoteAudioFinish"
 $ReportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "MiVibeRemote-audio-check.txt"
+$CurrentStage = "initializing"
 
 function Get-Sha256([string] $Path) {
   $stream = [IO.File]::OpenRead($Path)
@@ -144,24 +149,21 @@ function Resolve-DriverPackage {
   }
 }
 
-function Prepare-DriverFiles {
-  $resolvedDriverZip = Resolve-DriverPackage
-  $safeRoot = [IO.Path]::GetFullPath($StateRoot).TrimEnd('\') + '\'
-  $fullDriverRoot = [IO.Path]::GetFullPath($DriverRoot)
-  if (-not $fullDriverRoot.StartsWith($safeRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe driver staging path" }
-  if (Test-Path -LiteralPath $fullDriverRoot) { Remove-Item -LiteralPath $fullDriverRoot -Recurse -Force }
-  $null = New-Item -ItemType Directory -Force -Path $DriverRoot
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  [IO.Compression.ZipFile]::ExtractToDirectory($resolvedDriverZip, $DriverRoot)
-  $inf = Join-Path $DriverRoot "vbMmeCable64_win10.inf"
-  $cat = Join-Path $DriverRoot "vbaudio_cable64_win10.cat"
-  $setup = Join-Path $DriverRoot "VBCABLE_Setup_x64.exe"
-  if (-not (Test-Path -LiteralPath $inf) -or -not (Test-Path -LiteralPath $cat) -or -not (Test-Path -LiteralPath $setup)) { throw "Official VB-CABLE setup files are missing" }
+function Confirm-OfficialDriverFiles([string] $Root) {
+  $script:CurrentStage = "validating extracted VB-CABLE files"
+  $inf = Join-Path $Root "vbMmeCable64_win10.inf"
+  $cat = Join-Path $Root "vbaudio_cable64_win10.cat"
+  $setup = Join-Path $Root "VBCABLE_Setup_x64.exe"
+  if (-not (Test-Path -LiteralPath $inf -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $cat -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+    throw "Official VB-CABLE setup files are missing"
+  }
   $signature = Get-AuthenticodeSignature -LiteralPath $cat
   $catalogSigner = "$($signature.SignerCertificate.Subject)"
   # Windows hardware catalogs are signed by Microsoft's Hardware
   # Compatibility Publisher, not by the driver vendor whose setup EXE is
-  # checked separately below.  Requiring BUREL here incorrectly rejected the
+  # checked separately below. Requiring BUREL here incorrectly rejected the
   # genuine catalog from VB-Audio's hash-pinned package.
   if ($signature.Status -ne "Valid" -or $catalogSigner -notmatch "Microsoft Windows Hardware Compatibility Publisher") {
     throw "VB-CABLE catalog signature is invalid (status=$($signature.Status); signer=$catalogSigner)"
@@ -171,7 +173,37 @@ function Prepare-DriverFiles {
   if ($setupSignature.Status -ne "Valid" -or $setupSigner -notmatch "BUREL VINCENT") {
     throw "VB-CABLE official installer signature is invalid (status=$($setupSignature.Status); signer=$setupSigner)"
   }
+  # Remove Mark-of-the-Web only after both the pinned archive hash and vendor
+  # signatures have been verified. Some Windows policies otherwise deny launch
+  # of an EXE extracted from an Internet-downloaded archive.
+  Unblock-File -LiteralPath $setup -ErrorAction SilentlyContinue
   return $setup
+}
+
+function Prepare-DriverFiles {
+  $script:CurrentStage = "resolving official VB-CABLE package"
+  $resolvedDriverZip = Resolve-DriverPackage
+  $safeRoot = [IO.Path]::GetFullPath($StateRoot).TrimEnd('\') + '\'
+  $fullDriverRoot = [IO.Path]::GetFullPath($DriverRoot)
+  if (-not $fullDriverRoot.StartsWith($safeRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe driver staging path" }
+
+  # Reuse a previously verified extraction. In particular, never remove the
+  # official setup EXE while Windows may have it locked as a running process.
+  if (Test-Path -LiteralPath $fullDriverRoot -PathType Container) {
+    try {
+      return (Confirm-OfficialDriverFiles $fullDriverRoot)
+    } catch {
+      # Preserve the suspect directory for diagnostics and recover into a new
+      # directory instead of fighting a possible executable lock.
+      $fullDriverRoot = "$fullDriverRoot-recovery-$([Guid]::NewGuid().ToString('N'))"
+    }
+  }
+
+  $script:CurrentStage = "extracting official VB-CABLE package"
+  $null = New-Item -ItemType Directory -Force -Path $fullDriverRoot
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [IO.Compression.ZipFile]::ExtractToDirectory($resolvedDriverZip, $fullDriverRoot)
+  return (Confirm-OfficialDriverFiles $fullDriverRoot)
 }
 
 function Confirm-VBCableReady {
@@ -211,7 +243,13 @@ function Invoke-OfficialInstaller {
   # correctly denies a non-elevated helper access to some elevated process
   # handles even though the installer launched successfully.  Observe the
   # audio endpoints below instead.
-  Start-Process -FilePath $setup -Verb RunAs
+  $runningInstaller = Get-Process -Name "VBCABLE_Setup_x64" -ErrorAction SilentlyContinue
+  if (-not $runningInstaller) {
+    $script:CurrentStage = "launching official VB-CABLE installer"
+    Start-Process -FilePath $setup -Verb RunAs -WorkingDirectory (Split-Path -Parent $setup)
+  } else {
+    $script:CurrentStage = "official VB-CABLE installer is already running"
+  }
   Set-Content -LiteralPath $RebootFlag -Value "restart Windows to finish VB-CABLE installation" -Encoding ASCII
 }
 
@@ -245,6 +283,7 @@ try {
     }
     "Repair" {
       if (-not (Test-VBCableReady)) { Invoke-OfficialInstaller }
+      $script:CurrentStage = "waiting for VB-CABLE audio endpoints"
       if (Wait-VBCable 180) {
         Confirm-VBCableReady
         Restore-DefaultMicrophone
@@ -265,7 +304,7 @@ try {
     }
   }
 } catch {
-  $result = "WARNING: $($_.Exception.Message)"
+  $result = "WARNING ($CurrentStage): $($_.Exception.Message)"
   $exitCode = 1
 }
 
@@ -273,6 +312,7 @@ try {
   "MiVibe Remote audio check",
   "Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
   "Mode: $Mode",
+  "Stage: $CurrentStage",
   "Result: $result",
   "VB-CABLE render: $([bool](Get-VBCableRender))",
   "VB-CABLE capture: $([bool](Get-VBCableCapture))",

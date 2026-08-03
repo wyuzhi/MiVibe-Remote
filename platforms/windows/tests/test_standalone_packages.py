@@ -37,7 +37,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.11"', text)
+        self.assertIn('[string] $Version = "0.1.12"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -88,9 +88,16 @@ class StandalonePackageTests(unittest.TestCase):
             "function Wait-VBCable", 1
         )[0]
         self.assertIn("Start-Process -FilePath $setup -Verb RunAs", installer_body)
+        self.assertIn("-WorkingDirectory (Split-Path -Parent $setup)", installer_body)
+        self.assertIn('Get-Process -Name "VBCABLE_Setup_x64"', installer_body)
         self.assertNotIn("-PassThru", installer_body)
         self.assertNotIn("-Wait", installer_body)
         self.assertNotIn("ExitCode", installer_body)
+        self.assertIn('"VB-CABLE-$DriverPackageId"', text)
+        self.assertIn("Confirm-OfficialDriverFiles $fullDriverRoot", text)
+        self.assertNotIn("Remove-Item -LiteralPath $fullDriverRoot -Recurse", text)
+        self.assertIn("Unblock-File -LiteralPath $setup", text)
+        self.assertIn('"Stage: $CurrentStage"', text)
         repair_body = text.split('"Repair" {', 1)[1].split('"Restore" {', 1)[0]
         self.assertIn("Wait-VBCable 180", repair_body)
 
@@ -103,31 +110,35 @@ class StandalonePackageTests(unittest.TestCase):
         # Let the selected shell initialize its own module search path instead
         # of inheriting one from the parent GitHub Actions shell.
         powershell_environment.pop("PSModulePath", None)
-        completed = subprocess.run(
-            [
-                powershell,
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(script),
-                "-Mode",
-                "ValidatePackage",
-                "-AppPath",
-                str(ROOT),
-                "-NonInteractive",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=180,
-            check=False,
-            env=powershell_environment,
-        )
-        self.assertEqual(
-            completed.returncode,
-            0,
-            f"stdout={completed.stdout}\nstderr={completed.stderr}",
-        )
+        command = [
+            powershell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-Mode",
+            "ValidatePackage",
+            "-AppPath",
+            str(ROOT),
+            "-NonInteractive",
+        ]
+        # Run twice so CI verifies that a second Repair-style preparation reuses
+        # the immutable extraction instead of deleting a potentially locked EXE.
+        for attempt in range(2):
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+                env=powershell_environment,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                f"attempt={attempt + 1}\nstdout={completed.stdout}\nstderr={completed.stderr}",
+            )
 
     def test_xiaomi_package_declares_runtime_winrt_projections(self) -> None:
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
