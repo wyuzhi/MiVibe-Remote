@@ -37,7 +37,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.10"', text)
+        self.assertIn('[string] $Version = "0.1.11"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -84,6 +84,15 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertNotIn("Get-FileHash", text)
         self.assertIn("[IO.Compression.ZipFile]::ExtractToDirectory", text)
         self.assertNotIn("Expand-Archive", text)
+        installer_body = text.split("function Invoke-OfficialInstaller", 1)[1].split(
+            "function Wait-VBCable", 1
+        )[0]
+        self.assertIn("Start-Process -FilePath $setup -Verb RunAs", installer_body)
+        self.assertNotIn("-PassThru", installer_body)
+        self.assertNotIn("-Wait", installer_body)
+        self.assertNotIn("ExitCode", installer_body)
+        repair_body = text.split('"Repair" {', 1)[1].split('"Restore" {', 1)[0]
+        self.assertIn("Wait-VBCable 180", repair_body)
 
     @unittest.skipUnless(os.name == "nt", "Authenticode validation requires Windows")
     def test_official_vb_cable_package_has_expected_signers(self) -> None:
