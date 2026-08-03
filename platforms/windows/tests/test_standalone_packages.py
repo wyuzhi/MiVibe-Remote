@@ -83,6 +83,11 @@ class StandalonePackageTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Authenticode validation requires Windows")
     def test_official_vb_cable_package_has_expected_signers(self) -> None:
         script = SETUP / "configure-xiaomi-audio.ps1"
+        powershell_environment = os.environ.copy()
+        # GitHub invokes the build from PowerShell 7.  Its PSModulePath is not
+        # compatible with the Windows PowerShell 5.1 executable used by the
+        # installed app, so let powershell.exe initialize its native defaults.
+        powershell_environment.pop("PSModulePath", None)
         completed = subprocess.run(
             [
                 "powershell.exe",
@@ -101,6 +106,7 @@ class StandalonePackageTests(unittest.TestCase):
             text=True,
             timeout=180,
             check=False,
+            env=powershell_environment,
         )
         self.assertEqual(
             completed.returncode,
