@@ -695,7 +695,7 @@ class XiaomiSettingsWindow:
         title_block.pack(side="left")
         tk.Label(
             title_block,
-            text="小米蓝牙遥控器 2 Pro 按键设置",
+            text="小米蓝牙遥控器 2 按键设置",
             bg=BG,
             fg=TEXT,
             font=("Microsoft YaHei UI", 18, "bold"),
@@ -731,7 +731,7 @@ class XiaomiSettingsWindow:
         left_card.grid_propagate(False)
         tk.Label(
             left_card,
-            text="小米 Bluetooth Remote 2 Pro",
+            text="小米 Bluetooth Remote 2",
             bg=CARD,
             fg=TEXT,
             font=("Microsoft YaHei UI", 11, "bold"),
@@ -1200,7 +1200,7 @@ class XiaomiSettingsWindow:
         )
         if button_id == "mic":
             self.capture_status_var.set(
-                "已选择 2 Pro 语音键；可录入任意有效 Windows 单键或组合键"
+                "已选择小米遥控器 2 语音键；可录入任意有效 Windows 单键或组合键"
             )
         else:
             self.capture_status_var.set(f"已选择 {label}，可以开始录入")
@@ -1210,7 +1210,7 @@ class XiaomiSettingsWindow:
 
     @staticmethod
     def _capture_button_text(button_id: str) -> str:
-        return "录入 2 Pro 语音快捷键" if button_id == "mic" else "按真实键盘录入"
+        return "录入遥控器语音快捷键" if button_id == "mic" else "按真实键盘录入"
 
     def _voice_mode_changed(self, _event=None) -> None:
         self.save_status_var.set("有未保存的语音触发方式修改")
@@ -1229,9 +1229,9 @@ class XiaomiSettingsWindow:
         else:
             behavior = "开关型：收到语音开始和结束事件时各点按一次快捷键，适合点击开关式输入法。"
         self.voice_help_var.set(
-            "小米 2 Pro 语音键可自定义\n"
+            "小米蓝牙遥控器 2 语音键可自定义\n"
             f"当前语音快捷键：{shortcut}\n"
-            "设置：点左侧麦克风键 → 点“录入 2 Pro 语音快捷键” → 在键盘按目标组合 → 保存并应用。\n"
+            "设置：点左侧麦克风键 → 点“录入遥控器语音快捷键” → 在键盘按目标组合 → 保存并应用。\n"
             f"{behavior}\n"
             "实机说话：先短按一次唤醒，再按住语音键 2 秒以上边按边说，说完松开；只点一下不会传出完整语音。\n"
             "默认值为右 Alt。修改只影响语音键，不会改动方向、音量等其他按键；单次录音最长约 60 秒。"
@@ -1413,7 +1413,7 @@ class XiaomiSettingsWindow:
             )
             voice_enabled = bool(self.voice_enabled.get()) and bool(mic_keys)
             if self.voice_enabled.get() and not mic_keys:
-                raise ValueError("已经启用语音快捷键，请先给 2 Pro 麦克风键录入一个快捷键")
+                raise ValueError("已经启用语音快捷键，请先给遥控器麦克风键录入一个快捷键")
             if mic_keys:
                 resolve_hotkey_virtual_keys(mic_keys)
             voice_mode = {
@@ -1448,13 +1448,13 @@ class XiaomiSettingsWindow:
             save_keys_config(self.keys_config, KEYS_CONFIG_PATH)
             send_hub_restart(self.hub_port)
             self.save_status_var.set(
-                f"已保存 2 Pro：语音键 {format_keys(mic_keys) or '已关闭'} · {self.voice_trigger_mode.get()}"
+                f"已保存小米遥控器 2：语音键 {format_keys(mic_keys) or '已关闭'} · {self.voice_trigger_mode.get()}"
             )
             self.select_button(self.selected_id)
             messagebox.showinfo(
                 APP_NAME,
                 "设置已保存并应用。\n\n"
-                f"2 Pro 语音键：{format_keys(mic_keys) or '已关闭'}\n"
+                f"遥控器语音键：{format_keys(mic_keys) or '已关闭'}\n"
                 f"触发方式：{self.voice_trigger_mode.get()}\n\n"
                 "使用时先短按一次唤醒，再按住语音键 2 秒以上边按边说，说完松开。\n"
                 "如果目标输入法没有响应，请确认它的快捷键与这里完全一致，并检查是否选对开关型/按住型。",

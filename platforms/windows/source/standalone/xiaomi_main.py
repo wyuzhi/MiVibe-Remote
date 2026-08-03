@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent Xiaomi Remote 2 Pro bridge and tray host."""
+"""Independent Xiaomi Bluetooth Remote 2 bridge and tray host."""
 
 from __future__ import annotations
 
@@ -14,11 +14,12 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
+import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -178,8 +179,8 @@ class XiaomiApp:
     def __init__(self, root: tk.Tk, minimized: bool) -> None:
         self.root = root
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("560x330")
-        self.root.minsize(520, 300)
+        self.root.geometry("700x350")
+        self.root.minsize(660, 320)
         self.root.protocol("WM_DELETE_WINDOW", self.hide)
         self.workers = XiaomiWorkers()
         self.settings_processes: list[subprocess.Popen] = []
@@ -191,7 +192,12 @@ class XiaomiApp:
         self._build_ui()
         self._start_tray()
         self._start_control()
-        self.workers.start()
+        try:
+            self.workers.start()
+        except Exception as exc:
+            log(f"worker startup failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+            self.status_var.set("程序已打开，但后台桥接启动失败")
+            self.detail_var.set("点击“打开日志”查看原因；窗口会保留，不会静默退出。")
         if minimized:
             self.root.withdraw()
         self.root.after(800, self._poll)
@@ -216,7 +222,8 @@ class XiaomiApp:
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x")
         ttk.Button(buttons, text="按键与语音设置", command=self.open_settings).pack(side="left")
-        ttk.Button(buttons, text="重启桥接", command=self.workers.restart_bridge).pack(side="left", padx=10)
+        ttk.Button(buttons, text="重启桥接", command=self.restart_workers).pack(side="left", padx=10)
+        ttk.Button(buttons, text="安装/修复语音驱动", command=self.repair_audio).pack(side="left")
         ttk.Button(buttons, text="打开日志", command=self.open_logs).pack(side="left")
         ttk.Button(buttons, text="退出", command=self.exit).pack(side="right")
         ttk.Label(
@@ -243,7 +250,13 @@ class XiaomiApp:
             pystray.MenuItem("退出", lambda *_: self.root.after(0, self.exit)),
         )
         self.tray = pystray.Icon(APP_ID, self._icon(), APP_NAME, menu)
-        threading.Thread(target=self.tray.run, name="xiaomi-tray", daemon=True).start()
+        def run_tray() -> None:
+            try:
+                self.tray.run()
+            except Exception as exc:
+                log(f"tray failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+
+        threading.Thread(target=run_tray, name="xiaomi-tray", daemon=True).start()
 
     def _start_control(self) -> None:
         def serve() -> None:
@@ -287,6 +300,49 @@ class XiaomiApp:
     def open_logs() -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["explorer", str(LOG_DIR)])
+
+    def restart_workers(self) -> None:
+        try:
+            self.workers.start()
+        except Exception as exc:
+            log(f"worker restart failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+            self.status_var.set("后台桥接启动失败")
+            self.detail_var.set("主窗口会继续保留。点击“打开日志”查看具体错误。")
+
+    def repair_audio(self) -> None:
+        script = Path(sys.executable).resolve().parent / "support" / "configure-xiaomi-audio.ps1"
+        if not script.is_file():
+            messagebox.showerror("MiVibe Remote", f"找不到语音驱动修复脚本：\n{script}")
+            return
+        self.status_var.set("正在打开 VB-CABLE 官方安装程序")
+        self.detail_var.set("请在官方安装窗口中点击 Install，完成后重启 Windows。")
+
+        def run_repair() -> None:
+            try:
+                result = subprocess.run(
+                    [
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(script),
+                        "-Mode",
+                        "Repair",
+                        "-AppPath",
+                        str(Path(sys.executable).resolve().parent),
+                    ],
+                    cwd=str(script.parent),
+                    creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    check=False,
+                )
+                log(f"audio repair exited code={result.returncode}")
+            except Exception as exc:
+                log(f"audio repair failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+            finally:
+                self.root.after(0, self.restart_workers)
+
+        threading.Thread(target=run_repair, name="xiaomi-audio-repair", daemon=True).start()
 
     def show(self) -> None:
         self.root.deiconify()
@@ -362,5 +418,28 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def run_with_crash_report() -> int:
+    try:
+        return main()
+    except Exception as exc:
+        details = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        try:
+            log(f"fatal application error:\n{details}")
+        except Exception:
+            pass
+        is_background_role = len(sys.argv) >= 3 and sys.argv[1] == "--role"
+        if not is_background_role and os.name == "nt":
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    f"MiVibe Remote 启动失败，错误已写入：\n{HOST_LOG}\n\n{type(exc).__name__}: {exc}",
+                    "MiVibe Remote",
+                    0x10,
+                )
+            except Exception:
+                pass
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_with_crash_report())

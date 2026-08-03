@@ -81,7 +81,7 @@ Name: "{autoprograms}\{#AppGroupName}\{#AppName} 麦克风检查与修复"; File
 
 [Run]
 #if ProductKind == "xiaomi"
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-xiaomi-audio.ps1"" -Mode Install -AppPath ""{app}"""; WorkingDir: "{app}\support"; StatusMsg: "正在从 VB-Audio 官方地址下载并配置小米语音环境..."; Flags: waituntilterminated skipifsilent
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-xiaomi-audio.ps1"" -Mode Install -AppPath ""{app}"""; WorkingDir: "{app}\support"; StatusMsg: "正在检查小米语音环境..."; Flags: waituntilterminated skipifsilent
 #else
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-native-audio.ps1"" -Mode Install -ProductId ""{#ProductId}"" -ProductName ""{#AppName}"" -EndpointPattern ""{#EndpointPattern}"""; WorkingDir: "{app}\support"; StatusMsg: "正在配置设备自带麦克风..."; Flags: waituntilterminated skipifsilent
 #endif

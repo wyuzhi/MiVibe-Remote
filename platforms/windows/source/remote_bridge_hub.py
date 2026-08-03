@@ -394,7 +394,7 @@ class BridgeManager:
         specs = (
             BridgeSpec(
                 "xiaomi",
-                "小米蓝牙遥控器 2 Pro",
+                "小米蓝牙遥控器 2",
                 "xiaomi-worker",
                 ("--config", str(XIAOMI_CONFIG_PATH)),
             ),
