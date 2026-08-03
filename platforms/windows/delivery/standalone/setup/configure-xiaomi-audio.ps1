@@ -207,9 +207,11 @@ function Invoke-OfficialInstaller {
   # VB-Audio's own documentation requires the extracted x64 setup program to
   # be run as administrator.  Do not emulate a root device with SetupAPI: that
   # bypassed the vendor installer and failed on normal customer machines.
-  $process = Start-Process -FilePath $setup -Verb RunAs -PassThru -Wait
-  if ($process.ExitCode -ne 0) { throw "VB-CABLE official installer ended with code $($process.ExitCode)" }
-  Restore-DefaultMicrophone
+  # Do not request a process handle or wait on the elevated child.  Windows
+  # correctly denies a non-elevated helper access to some elevated process
+  # handles even though the installer launched successfully.  Observe the
+  # audio endpoints below instead.
+  Start-Process -FilePath $setup -Verb RunAs
   Set-Content -LiteralPath $RebootFlag -Value "restart Windows to finish VB-CABLE installation" -Encoding ASCII
 }
 
@@ -243,12 +245,12 @@ try {
     }
     "Repair" {
       if (-not (Test-VBCableReady)) { Invoke-OfficialInstaller }
-      if (Wait-VBCable 15) {
+      if (Wait-VBCable 180) {
         Confirm-VBCableReady
         Restore-DefaultMicrophone
         $result = "VB-CABLE is ready; restart Windows if voice applications cannot see it"
       } else {
-        $result = "Official VB-CABLE installer finished; restart Windows, then reopen MiVibe"
+        $result = "Official VB-CABLE installer opened; finish Install Driver, restart Windows, then reopen MiVibe"
       }
     }
     "Restore" {
