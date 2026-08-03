@@ -1,10 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-  [ValidateSet("Install", "Finish", "Repair", "Restore", "Audit")]
+  [ValidateSet("Install", "Finish", "Repair", "Restore", "Audit", "ValidatePackage")]
   [string] $Mode = "Install",
   [Parameter(Mandatory = $true)]
   [string] $AppPath,
-  [string] $DriverZipPath = ""
+  [string] $DriverZipPath = "",
+  [switch] $NonInteractive
 )
 
 $ErrorActionPreference = "Stop"
@@ -145,9 +146,19 @@ function Prepare-DriverFiles {
   $setup = Join-Path $DriverRoot "VBCABLE_Setup_x64.exe"
   if (-not (Test-Path -LiteralPath $inf) -or -not (Test-Path -LiteralPath $cat) -or -not (Test-Path -LiteralPath $setup)) { throw "Official VB-CABLE setup files are missing" }
   $signature = Get-AuthenticodeSignature -LiteralPath $cat
-  if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE catalog signature is invalid" }
+  $catalogSigner = "$($signature.SignerCertificate.Subject)"
+  # Windows hardware catalogs are signed by Microsoft's Hardware
+  # Compatibility Publisher, not by the driver vendor whose setup EXE is
+  # checked separately below.  Requiring BUREL here incorrectly rejected the
+  # genuine catalog from VB-Audio's hash-pinned package.
+  if ($signature.Status -ne "Valid" -or $catalogSigner -notmatch "Microsoft Windows Hardware Compatibility Publisher") {
+    throw "VB-CABLE catalog signature is invalid (status=$($signature.Status); signer=$catalogSigner)"
+  }
   $setupSignature = Get-AuthenticodeSignature -LiteralPath $setup
-  if ($setupSignature.Status -ne "Valid" -or $setupSignature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE official installer signature is invalid" }
+  $setupSigner = "$($setupSignature.SignerCertificate.Subject)"
+  if ($setupSignature.Status -ne "Valid" -or $setupSigner -notmatch "BUREL VINCENT") {
+    throw "VB-CABLE official installer signature is invalid (status=$($setupSignature.Status); signer=$setupSigner)"
+  }
   return $setup
 }
 
@@ -234,6 +245,10 @@ try {
       $result = "Previous microphone restored; VB-CABLE retained"
     }
     "Audit" { if (-not (Test-VBCableReady)) { throw "VB-CABLE is not ready" } }
+    "ValidatePackage" {
+      $validatedSetup = Prepare-DriverFiles
+      $result = "Official VB-CABLE package signatures are valid: $validatedSetup"
+    }
   }
 } catch {
   $result = "WARNING: $($_.Exception.Message)"
@@ -253,7 +268,7 @@ try {
   "Input method or speech recognition: not included"
 ) | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 
-if ($Mode -eq "Repair" -or $exitCode -ne 0) {
+if (-not $NonInteractive -and ($Mode -eq "Repair" -or $exitCode -ne 0)) {
   try { (New-Object -ComObject WScript.Shell).Popup($result,0,$ProductName,64)|Out-Null } catch {}
 }
 exit $exitCode

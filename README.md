@@ -36,7 +36,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
 - macOS：`MiVibe-Remote-0.1.8.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.9.exe`
+- Windows：`MiVibeRemoteSetup-0.1.10.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
 > 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
@@ -75,7 +75,7 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.9.exe`。
+1. 下载并运行 `MiVibeRemoteSetup-0.1.10.exe`。
 2. 打开 MiVibe Remote；没有安装语音驱动时，普通按键和设置窗口仍然可以使用。
 3. 点击“安装/修复语音驱动”。程序会校验下载文件并打开 VB-Audio 官方安装程序。
 4. 在官方窗口点击 `Install`，然后重启 Windows。
@@ -166,7 +166,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.9 `
+  -Version 0.1.10 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

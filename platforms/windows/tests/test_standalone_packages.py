@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import ast
+import os
+import subprocess
 import unittest
 
 
@@ -25,6 +27,8 @@ class StandalonePackageTests(unittest.TestCase):
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
         self.assertIn('REMOTE_BRIDGE_XIAOMI_APP_ID", APP_ID', text)
         self.assertIn('REMOTE_BRIDGE_XIAOMI_RUNTIME_ID", APP_ID', text)
+        self.assertIn('child_environment["PYTHONUTF8"] = "1"', text)
+        self.assertIn('child_environment["PYTHONIOENCODING"] = "utf-8"', text)
         self.assertNotIn("from bridges.t1", text)
         self.assertNotIn("from bridges.hanvon", text)
 
@@ -32,7 +36,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.9"', text)
+        self.assertIn('[string] $Version = "0.1.10"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -73,6 +77,54 @@ class StandalonePackageTests(unittest.TestCase):
         install_body = text.split('"Install" {', 1)[1].split('"Finish" {', 1)[0]
         self.assertNotIn("Invoke-OfficialInstaller", install_body)
         self.assertIn("optional third-party audio driver", install_body)
+        self.assertIn("Microsoft Windows Hardware Compatibility Publisher", text)
+        self.assertIn("BUREL VINCENT", text)
+
+    @unittest.skipUnless(os.name == "nt", "Authenticode validation requires Windows")
+    def test_official_vb_cable_package_has_expected_signers(self) -> None:
+        script = SETUP / "configure-xiaomi-audio.ps1"
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+                "-Mode",
+                "ValidatePackage",
+                "-AppPath",
+                str(ROOT),
+                "-NonInteractive",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout={completed.stdout}\nstderr={completed.stderr}",
+        )
+
+    def test_xiaomi_package_declares_runtime_winrt_projections(self) -> None:
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        spec = (SOURCE / "XiaomiRemoteBridge.spec").read_text(encoding="utf-8")
+        build = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        for projection in (
+            "winrt-Windows.Foundation==3.2.1",
+            "winrt-Windows.Foundation.Collections==3.2.1",
+        ):
+            self.assertIn(projection, requirements)
+        for module in (
+            "winrt.windows.foundation",
+            "winrt.windows.foundation.collections",
+        ):
+            self.assertIn(module, spec)
+            self.assertIn(module, build)
 
     def test_specs_do_not_cross_ship_other_hardware_bridges(self) -> None:
         expected = {

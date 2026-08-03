@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.9"
+APP_VERSION = "0.1.10"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -82,11 +82,15 @@ class XiaomiWorkers:
     def _spawn(role: str, arguments: list[str], log_path: Path) -> subprocess.Popen:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         stream = log_path.open("a", encoding="utf-8")
+        child_environment = os.environ.copy()
+        child_environment["PYTHONUTF8"] = "1"
+        child_environment["PYTHONIOENCODING"] = "utf-8"
         return subprocess.Popen(
             role_command(role, arguments, unbuffered=True),
             cwd=str(Path(sys.executable).resolve().parent),
             stdout=stream,
             stderr=subprocess.STDOUT,
+            env=child_environment,
             creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
 
