@@ -271,4 +271,5 @@ try {
 if (-not $NonInteractive -and ($Mode -eq "Repair" -or $exitCode -ne 0)) {
   try { (New-Object -ComObject WScript.Shell).Popup($result,0,$ProductName,64)|Out-Null } catch {}
 }
+Write-Output $result
 exit $exitCode
