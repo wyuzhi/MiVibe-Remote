@@ -33,7 +33,7 @@ class FakeManager:
         self.bridges = {
             name: SimpleNamespace(spec=SimpleNamespace(name=label))
             for name, label in (
-                ("xiaomi", "小米蓝牙遥控器 2 Pro"),
+                ("xiaomi", "小米蓝牙遥控器 2"),
                 ("t1", "T1 遥控器"),
                 ("hanvon", "汉王语音笔"),
             )

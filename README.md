@@ -36,7 +36,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
 - macOS：`MiVibe-Remote-0.1.8.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.8.exe`
+- Windows：`MiVibeRemoteSetup-0.1.9.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
 > 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
@@ -75,21 +75,24 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.8.exe`。
-2. 安装器会从 VB-Audio 官方地址下载并验证 VB-CABLE，然后完成配置。
-3. 在 Codex 中选择 `CABLE Output` 作为麦克风。
-4. 确认 Codex 的“按住听写”快捷键为右 Alt。
+1. 下载并运行 `MiVibeRemoteSetup-0.1.9.exe`。
+2. 打开 MiVibe Remote；没有安装语音驱动时，普通按键和设置窗口仍然可以使用。
+3. 点击“安装/修复语音驱动”。程序会校验下载文件并打开 VB-Audio 官方安装程序。
+4. 在官方窗口点击 `Install`，然后重启 Windows。
+5. 在 Codex 中选择 `CABLE Output` 作为麦克风。
+6. 确认 Codex 的“按住听写”快捷键为右 Alt。
 
-安装器不会擅自修改 Windows 的系统默认麦克风或全局麦克风隐私设置。
+MiVibe 不会主动修改 Windows 的系统默认麦克风或全局麦克风隐私设置；官方驱动安装期间如果 Windows 自动切换默认设备，助手会尝试恢复安装前的麦克风。
 
 ## 默认按键
 
-MiVibe Remote 提供两个一键预设，默认使用 Codex 预设：
+MiVibe Remote 提供三个一键预设，默认使用 Codex 预设：
 
 | 预设 | 电源键 | 语音键 |
 | --- | --- | --- |
 | Codex 预设 | 打开/切换到 Codex | macOS 按住 `⌃⇧D`；Windows 按住右 Alt |
 | WorkBuddy 预设 | 打开/切换到 WorkBuddy | macOS 在开始/结束时点按 `⌘D`；Windows 点按 `Ctrl+D` |
+| 微信预设 | 打开/切换到微信 | macOS 按住 `Fn`；Windows 按住 `Ctrl+Win` |
 
 两套预设的其他按键相同：
 
@@ -163,7 +166,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.8 `
+  -Version 0.1.9 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

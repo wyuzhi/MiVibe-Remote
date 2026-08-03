@@ -27,6 +27,17 @@ from bridges.xiaomi import xiaomi_config
 
 
 class XiaomiCoreBehaviorTests(unittest.TestCase):
+    def test_rc001_atvv_service_is_discovered_without_rc003_hardware_id(self) -> None:
+        candidate = xiaomi_core.xiaomi_candidate_from_interface(
+            "RC001",
+            r"\\?\BTHLEDevice#{ab5e0001-5a21-4f05-bc7d-af01f617b664}_AABBCCDDEEFF#",
+        )
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["name"], "RC001")
+        self.assertEqual(candidate["address"], "AA:BB:CC:DD:EE:FF")
+        self.assertTrue(candidate["known_name"])
+        self.assertFalse(candidate["hardware_match"])
+
     def test_codex_command_action_launches_without_loading_keyboard_mapper(self) -> None:
         hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
             xiaomi_core.XiaomiSpecialKeyHook
@@ -141,6 +152,7 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         keys = xiaomi_config.default_keys_config()
         self.assertEqual(config["back_repeat_delay"], 0.28)
         self.assertEqual(config["back_repeat_interval"], 0.04)
+        self.assertFalse(config["hid_tap_compatible"])
         self.assertEqual(keys["button_bindings"]["back"][0]["hold_ms"], 20)
 
     def test_legacy_back_repeat_defaults_migrate_without_overwriting_custom(self) -> None:

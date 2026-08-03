@@ -16,7 +16,7 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 MAPPING_SCHEMA_VERSION = 1
 
@@ -348,6 +348,7 @@ def default_config() -> dict:
         "tv_action_ready_delay": 2.0,
         "special_key_hook_enabled": True,
         "hid_report_tap_enabled": True,
+        "hid_tap_compatible": False,
         "back_repeat_delay": 0.28,
         "back_repeat_interval": 0.04,
         "volume_repeat_delay": 0.40,

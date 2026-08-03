@@ -32,7 +32,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.8"', text)
+        self.assertIn('[string] $Version = "0.1.9"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -53,10 +53,24 @@ class StandalonePackageTests(unittest.TestCase):
         ).read_text(encoding="utf-8-sig")
         self.assertNotIn("Set-DefaultCableMicrophone", text)
         self.assertNotIn("CapabilityAccessManager\\ConsentStore\\microphone", text)
-        self.assertIn('"System default microphone: unchanged"', text)
+        self.assertIn(
+            '"System default microphone: preserved when Windows allows restoration"',
+            text,
+        )
         self.assertIn('"Microphone privacy settings: unchanged"', text)
         self.assertIn("$exitCode = 1", text)
         self.assertIn("exit $exitCode", text)
+
+    def test_xiaomi_voice_driver_uses_vendor_setup_and_does_not_block_app_install(self) -> None:
+        text = (SETUP / "configure-xiaomi-audio.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        self.assertIn('"VBCABLE_Setup_x64.exe"', text)
+        self.assertIn("Invoke-OfficialInstaller", text)
+        self.assertNotIn("RootDeviceInstaller", text)
+        install_body = text.split('"Install" {', 1)[1].split('"Finish" {', 1)[0]
+        self.assertNotIn("Invoke-OfficialInstaller", install_body)
+        self.assertIn("optional third-party audio driver", install_body)
 
     def test_specs_do_not_cross_ship_other_hardware_bridges(self) -> None:
         expected = {

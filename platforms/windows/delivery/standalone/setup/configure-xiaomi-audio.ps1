@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [ValidateSet("Install", "InstallElevated", "Finish", "Repair", "Restore", "Audit")]
+  [ValidateSet("Install", "Finish", "Repair", "Restore", "Audit")]
   [string] $Mode = "Install",
   [Parameter(Mandatory = $true)]
   [string] $AppPath,
@@ -84,41 +84,6 @@ public static class XiaomiAudioEndpoint {
 '@
 }
 
-function Initialize-RootDeviceInstaller {
-  if ("RootDeviceInstaller" -as [type]) { return }
-  Add-Type -Language CSharp -TypeDefinition @'
-using System;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class RootDeviceInstaller {
-  const uint DICD_GENERATE_ID=0x1, SPDRP_HARDWAREID=0x1, DIF_REGISTERDEVICE=0x19, INSTALLFLAG_FORCE=0x1;
-  static readonly IntPtr INVALID_HANDLE_VALUE=new IntPtr(-1);
-  [StructLayout(LayoutKind.Sequential)] struct SP_DEVINFO_DATA { public uint cbSize; public Guid ClassGuid; public uint DevInst; public IntPtr Reserved; }
-  [DllImport("setupapi.dll",SetLastError=true)] static extern IntPtr SetupDiCreateDeviceInfoList(ref Guid ClassGuid,IntPtr hwndParent);
-  [DllImport("setupapi.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool SetupDiCreateDeviceInfo(IntPtr set,string name,ref Guid guid,string desc,IntPtr hwnd,uint flags,ref SP_DEVINFO_DATA data);
-  [DllImport("setupapi.dll",SetLastError=true)] static extern bool SetupDiSetDeviceRegistryProperty(IntPtr set,ref SP_DEVINFO_DATA data,uint property,byte[] buffer,uint size);
-  [DllImport("setupapi.dll",SetLastError=true)] static extern bool SetupDiCallClassInstaller(uint installFunction,IntPtr set,ref SP_DEVINFO_DATA data);
-  [DllImport("setupapi.dll",SetLastError=true)] static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
-  [DllImport("newdev.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool UpdateDriverForPlugAndPlayDevices(IntPtr hwnd,string hardwareId,string fullInfPath,uint flags,out bool reboot);
-  static void Check(bool ok){if(!ok)throw new Win32Exception(Marshal.GetLastWin32Error());}
-  public static bool Install(string infPath,string hardwareId,string description){
-    Guid media=new Guid("4d36e96c-e325-11ce-bfc1-08002be10318"); IntPtr set=SetupDiCreateDeviceInfoList(ref media,IntPtr.Zero);
-    if(set==INVALID_HANDLE_VALUE)throw new Win32Exception(Marshal.GetLastWin32Error());
-    try {
-      SP_DEVINFO_DATA data=new SP_DEVINFO_DATA(); data.cbSize=(uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
-      Check(SetupDiCreateDeviceInfo(set,description,ref media,description,IntPtr.Zero,DICD_GENERATE_ID,ref data));
-      byte[] ids=Encoding.Unicode.GetBytes(hardwareId+"\0\0");
-      Check(SetupDiSetDeviceRegistryProperty(set,ref data,SPDRP_HARDWAREID,ids,(uint)ids.Length));
-      Check(SetupDiCallClassInstaller(DIF_REGISTERDEVICE,set,ref data));
-      bool reboot; Check(UpdateDriverForPlugAndPlayDevices(IntPtr.Zero,hardwareId,System.IO.Path.GetFullPath(infPath),INSTALLFLAG_FORCE,out reboot));
-      return reboot;
-    } finally { SetupDiDestroyDeviceInfoList(set); }
-  }
-}
-'@
-}
-
 function Resolve-DriverPackage {
   if (-not [string]::IsNullOrWhiteSpace($DriverZipPath)) {
     if (-not (Test-Path -LiteralPath $DriverZipPath -PathType Leaf)) {
@@ -177,10 +142,13 @@ function Prepare-DriverFiles {
   Expand-Archive -LiteralPath $resolvedDriverZip -DestinationPath $DriverRoot -Force
   $inf = Join-Path $DriverRoot "vbMmeCable64_win10.inf"
   $cat = Join-Path $DriverRoot "vbaudio_cable64_win10.cat"
-  if (-not (Test-Path -LiteralPath $inf) -or -not (Test-Path -LiteralPath $cat)) { throw "Signed VB-CABLE Windows 10 driver files are missing" }
+  $setup = Join-Path $DriverRoot "VBCABLE_Setup_x64.exe"
+  if (-not (Test-Path -LiteralPath $inf) -or -not (Test-Path -LiteralPath $cat) -or -not (Test-Path -LiteralPath $setup)) { throw "Official VB-CABLE setup files are missing" }
   $signature = Get-AuthenticodeSignature -LiteralPath $cat
   if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE catalog signature is invalid" }
-  return $inf
+  $setupSignature = Get-AuthenticodeSignature -LiteralPath $setup
+  if ($setupSignature.Status -ne "Valid" -or $setupSignature.SignerCertificate.Subject -notmatch "BUREL VINCENT") { throw "VB-CABLE official installer signature is invalid" }
+  return $setup
 }
 
 function Confirm-VBCableReady {
@@ -189,16 +157,37 @@ function Confirm-VBCableReady {
   }
 }
 
-function Set-FinishRunOnce {
-  $null = New-Item -Path $RunOnceKey -Force
-  $command = 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Mode Finish -AppPath "{1}"' -f $PSCommandPath,$AppPath
-  New-ItemProperty -Path $RunOnceKey -Name $RunOnceName -Value $command -PropertyType String -Force | Out-Null
+function Save-DefaultMicrophone {
+  try {
+    Initialize-AudioEndpointApi
+    $id = [XiaomiAudioEndpoint]::GetDefaultCapture()
+    if ($id) { Set-Content -LiteralPath $PreviousMicFile -Value $id -Encoding UTF8 }
+  } catch {
+    Write-Warning "Unable to remember the current default microphone: $($_.Exception.Message)"
+  }
 }
 
-function Invoke-ElevatedInstall {
-  $args = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode InstallElevated -AppPath "{1}"' -f $PSCommandPath,$AppPath
-  $process = Start-Process -FilePath "powershell.exe" -ArgumentList $args -Verb RunAs -PassThru -Wait
-  if ($process.ExitCode -notin @(0, 3010)) { throw "Automatic VB-CABLE install failed with code $($process.ExitCode)" }
+function Restore-DefaultMicrophone {
+  if (-not (Test-Path -LiteralPath $PreviousMicFile -PathType Leaf)) { return }
+  try {
+    Initialize-AudioEndpointApi
+    $id = (Get-Content -LiteralPath $PreviousMicFile -Raw -Encoding UTF8).Trim()
+    if ($id) { [XiaomiAudioEndpoint]::SetDefaultCapture($id) }
+  } catch {
+    Write-Warning "Unable to restore the previous default microphone: $($_.Exception.Message)"
+  }
+}
+
+function Invoke-OfficialInstaller {
+  $setup = Prepare-DriverFiles
+  Save-DefaultMicrophone
+  # VB-Audio's own documentation requires the extracted x64 setup program to
+  # be run as administrator.  Do not emulate a root device with SetupAPI: that
+  # bypassed the vendor installer and failed on normal customer machines.
+  $process = Start-Process -FilePath $setup -Verb RunAs -PassThru -Wait
+  if ($process.ExitCode -ne 0) { throw "VB-CABLE official installer ended with code $($process.ExitCode)" }
+  Restore-DefaultMicrophone
+  Set-Content -LiteralPath $RebootFlag -Value "restart Windows to finish VB-CABLE installation" -Encoding ASCII
 }
 
 function Wait-VBCable([int] $Seconds) {
@@ -215,29 +204,32 @@ $exitCode = 0
 try {
   $null = New-Item -ItemType Directory -Force -Path $StateRoot
   switch ($Mode) {
-    "InstallElevated" {
-      if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Administrator rights are required" }
-      $inf = Prepare-DriverFiles
-      Initialize-RootDeviceInstaller
-      $reboot = [RootDeviceInstaller]::Install($inf, "VBAudioVACWDM", "VB-Audio Virtual Cable")
-      if ($reboot) { Set-Content -LiteralPath $RebootFlag -Value "reboot required" -Encoding ASCII; exit 3010 }
-      exit 0
-    }
     "Install" {
-      if (-not (Test-VBCableReady)) { Invoke-ElevatedInstall }
-      if (Wait-VBCable 45) { Confirm-VBCableReady; Remove-Item -LiteralPath $RebootFlag -Force -ErrorAction SilentlyContinue }
-      else { Set-Content -LiteralPath $RebootFlag -Value "reboot required" -Encoding ASCII; Set-FinishRunOnce; $result = "Driver installed; Windows restart required" }
+      if (Test-VBCableReady) {
+        Remove-Item -LiteralPath $RebootFlag -Force -ErrorAction SilentlyContinue
+      } else {
+        # MiVibe installation must remain usable for button mapping even when
+        # the optional third-party audio driver is absent.  The user starts the
+        # vendor installer explicitly from MiVibe or the Start menu repair item.
+        $result = "VB-CABLE is not installed; open MiVibe and click Install/Repair voice driver"
+      }
     }
     "Finish" {
-      if (Wait-VBCable 60) { Confirm-VBCableReady; Remove-Item -LiteralPath $RebootFlag -Force -ErrorAction SilentlyContinue; Remove-ItemProperty -Path $RunOnceKey -Name $RunOnceName -Force -ErrorAction SilentlyContinue }
-      else { throw "VB-CABLE endpoints are still unavailable after restart" }
+      if (Wait-VBCable 60) { Confirm-VBCableReady; Restore-DefaultMicrophone; Remove-Item -LiteralPath $RebootFlag -Force -ErrorAction SilentlyContinue }
+      else { $result = "VB-CABLE endpoints are unavailable; run Install/Repair voice driver again" }
     }
     "Repair" {
-      if (-not (Test-VBCableReady)) { Invoke-ElevatedInstall }
-      if (Wait-VBCable 45) { Confirm-VBCableReady } else { Set-FinishRunOnce; $result = "Driver installed; Windows restart required" }
+      if (-not (Test-VBCableReady)) { Invoke-OfficialInstaller }
+      if (Wait-VBCable 15) {
+        Confirm-VBCableReady
+        Restore-DefaultMicrophone
+        $result = "VB-CABLE is ready; restart Windows if voice applications cannot see it"
+      } else {
+        $result = "Official VB-CABLE installer finished; restart Windows, then reopen MiVibe"
+      }
     }
     "Restore" {
-      if (Test-Path -LiteralPath $PreviousMicFile) { Initialize-AudioEndpointApi; $id=(Get-Content -LiteralPath $PreviousMicFile -Raw -Encoding UTF8).Trim(); if($id){[XiaomiAudioEndpoint]::SetDefaultCapture($id)}; Remove-Item -LiteralPath $PreviousMicFile -Force }
+      Restore-DefaultMicrophone
       Remove-ItemProperty -Path $RunOnceKey -Name $RunOnceName -Force -ErrorAction SilentlyContinue
       $result = "Previous microphone restored; VB-CABLE retained"
     }
@@ -255,8 +247,8 @@ try {
   "Result: $result",
   "VB-CABLE render: $([bool](Get-VBCableRender))",
   "VB-CABLE capture: $([bool](Get-VBCableCapture))",
-  "Driver install: automatic signed root-device installation",
-  "System default microphone: unchanged",
+  "Driver install: official signed VBCABLE_Setup_x64.exe (user initiated)",
+  "System default microphone: preserved when Windows allows restoration",
   "Microphone privacy settings: unchanged",
   "Input method or speech recognition: not included"
 ) | Set-Content -LiteralPath $ReportPath -Encoding UTF8

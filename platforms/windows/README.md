@@ -31,15 +31,15 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m unittest discover -s tests -v
-.\delivery\build-standalone-packages.ps1 -Version 0.1.8 -Product xiaomi -AllowUnsignedCandidate
+.\delivery\build-standalone-packages.ps1 -Version 0.1.9 -Product xiaomi -AllowUnsignedCandidate
 ```
 
 默认只构建 MiVibe Remote；生成的可执行文件和安装器分别为
-`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.8.exe`。`-Product` 参数仍可显式选择
+`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.9.exe`。`-Product` 参数仍可显式选择
 保留的其他上游独立产品，但它们不属于 MiVibe Remote 交付物。
 构建同时生成对应的 `.exe.sha256` 校验文件。
 
-构建会校验并获取 Frida Gadget。VB-CABLE 不嵌入安装包，而是在用户首次安装时从
-VB-Audio 官方地址下载并校验；两者继续适用各自许可证。
+构建会校验并获取 Frida Gadget。VB-CABLE 不嵌入安装包；用户从 MiVibe 主窗口主动
+打开语音驱动助手后，助手从 VB-Audio 官方地址下载、校验并启动官方安装程序。
 上游说明见 [UPSTREAM_README.md](UPSTREAM_README.md)，来源与许可证见仓库根目录
 `UPSTREAM.md`、本目录 `THIRD_PARTY_NOTICES.md` 和 `LICENSE`。

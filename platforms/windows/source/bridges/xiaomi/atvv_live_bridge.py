@@ -77,7 +77,16 @@ HID_REPORT_REFERENCE_UUID = "00002908-0000-1000-8000-00805f9b34fb"
 HID_CONTROL_POINT_UUID = "00002a4c-0000-1000-8000-00805f9b34fb"
 HID_PROTOCOL_MODE_UUID = "00002a4e-0000-1000-8000-00805f9b34fb"
 XIAOMI_2_PRO_HARDWARE_TOKEN = "dev_vid&012717_pid&32b8"
-XIAOMI_2_PRO_NAMES = frozenset({"mi rc", "xiaomi bluetooth remote 2 pro"})
+XIAOMI_REMOTE_NAMES = frozenset(
+    {
+        "mi rc",
+        "rc001",
+        "rc003",
+        "xiaomi bluetooth remote 2",
+        "xiaomi bluetooth remote 2 pro",
+        "小米蓝牙语音遥控器",
+    }
+)
 INTERFACE_ADDRESS_RE = re.compile(
     r"[_-]([0-9a-f]{12})(?:[#\\]|$)", re.IGNORECASE
 )
@@ -86,11 +95,6 @@ INTERFACE_ADDRESS_RE = re.compile(
 def xiaomi_candidate_from_interface(name: str, interface_id: str) -> dict | None:
     folded_id = str(interface_id).casefold()
     folded_name = str(name).strip().casefold()
-    if (
-        XIAOMI_2_PRO_HARDWARE_TOKEN not in folded_id
-        and folded_name not in XIAOMI_2_PRO_NAMES
-    ):
-        return None
     match = INTERFACE_ADDRESS_RE.search(folded_id)
     if match is None:
         return None
@@ -102,6 +106,7 @@ def xiaomi_candidate_from_interface(name: str, interface_id: str) -> dict | None
         "device_token": token,
         "interface_id": str(interface_id),
         "hardware_match": XIAOMI_2_PRO_HARDWARE_TOKEN in folded_id,
+        "known_name": folded_name in XIAOMI_REMOTE_NAMES,
     }
 
 
@@ -174,7 +179,7 @@ def discover_and_apply_xiaomi_identity(
         if len(candidates) > 1:
             print(
                 f"XIAOMI DEVICE multiple candidates={len(candidates)}; "
-                "请仅保留当前使用的 2 Pro 配对后重启",
+                "请仅保留当前使用的小米遥控器配对后重启",
                 flush=True,
             )
         else:
@@ -182,6 +187,10 @@ def discover_and_apply_xiaomi_identity(
         return configured
 
     address = apply_remote_identity(config, keys_config, candidate["address"])
+    # The optional WUDF/Frida compatibility tap is verified only for RC003.
+    # RC001 and other ATVV-compatible Xiaomi remotes use the normal Raw Input
+    # mapping path instead of attempting an incompatible elevated injection.
+    config["hid_tap_compatible"] = bool(candidate["hardware_match"])
     save_config(config, config_path)
     save_keys_config(keys_config, keys_config_path)
     print(
@@ -1578,7 +1587,9 @@ def main(argv: list[str] | None = None) -> int:
         args.voice_hotkey = "+".join(DEFAULT_VOICE_HOTKEY)
     if not bool(config.get("voice_shortcut_enabled", True)):
         args.no_voice_shortcut = True
-    hid_tap_enabled = bool(config.get("hid_report_tap_enabled", True))
+    hid_tap_enabled = bool(config.get("hid_report_tap_enabled", True)) and bool(
+        config.get("hid_tap_compatible", False)
+    )
     action_guard = XiaomiTvActionGate(config.get("tv_action_ready_delay", 2.0))
     def cycle_runtime_preset() -> str:
         preset = cycle_preset_configuration(config, keys_config)
