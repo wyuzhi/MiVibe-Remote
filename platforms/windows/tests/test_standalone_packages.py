@@ -79,6 +79,10 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("optional third-party audio driver", install_body)
         self.assertIn("Microsoft Windows Hardware Compatibility Publisher", text)
         self.assertIn("BUREL VINCENT", text)
+        self.assertIn("function Get-Sha256", text)
+        self.assertNotIn("Get-FileHash", text)
+        self.assertIn("[IO.Compression.ZipFile]::ExtractToDirectory", text)
+        self.assertNotIn("Expand-Archive", text)
 
     @unittest.skipUnless(os.name == "nt", "Authenticode validation requires Windows")
     def test_official_vb_cable_package_has_expected_signers(self) -> None:

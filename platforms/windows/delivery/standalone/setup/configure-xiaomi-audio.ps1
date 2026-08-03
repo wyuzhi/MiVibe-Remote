@@ -21,6 +21,17 @@ $RunOnceKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
 $RunOnceName = "MiVibeRemoteAudioFinish"
 $ReportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "MiVibeRemote-audio-check.txt"
 
+function Get-Sha256([string] $Path) {
+  $stream = [IO.File]::OpenRead($Path)
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
+
 function Get-VBCableEndpoint([string] $Flow, [string] $Prefix, [string] $Pattern) {
   $root = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\$Flow"
   foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue) {
@@ -90,7 +101,7 @@ function Resolve-DriverPackage {
     if (-not (Test-Path -LiteralPath $DriverZipPath -PathType Leaf)) {
       throw "VB-CABLE driver package is missing: $DriverZipPath"
     }
-    $providedHash = (Get-FileHash -LiteralPath $DriverZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $providedHash = Get-Sha256 $DriverZipPath
     if ($providedHash -ne $ExpectedZipSha256) {
       throw "VB-CABLE package hash mismatch"
     }
@@ -98,7 +109,7 @@ function Resolve-DriverPackage {
   }
 
   if (Test-Path -LiteralPath $DownloadedDriverZip -PathType Leaf) {
-    $cachedHash = (Get-FileHash -LiteralPath $DownloadedDriverZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $cachedHash = Get-Sha256 $DownloadedDriverZip
     if ($cachedHash -eq $ExpectedZipSha256) {
       return $DownloadedDriverZip
     }
@@ -122,7 +133,7 @@ function Resolve-DriverPackage {
     } else {
       Invoke-WebRequest -Uri $DriverDownloadUrl -OutFile $temporary -UseBasicParsing -TimeoutSec 600
     }
-    $downloadHash = (Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant()
+    $downloadHash = Get-Sha256 $temporary
     if ($downloadHash -ne $ExpectedZipSha256) {
       throw "VB-CABLE download hash mismatch"
     }
@@ -140,7 +151,8 @@ function Prepare-DriverFiles {
   if (-not $fullDriverRoot.StartsWith($safeRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe driver staging path" }
   if (Test-Path -LiteralPath $fullDriverRoot) { Remove-Item -LiteralPath $fullDriverRoot -Recurse -Force }
   $null = New-Item -ItemType Directory -Force -Path $DriverRoot
-  Expand-Archive -LiteralPath $resolvedDriverZip -DestinationPath $DriverRoot -Force
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [IO.Compression.ZipFile]::ExtractToDirectory($resolvedDriverZip, $DriverRoot)
   $inf = Join-Path $DriverRoot "vbMmeCable64_win10.inf"
   $cat = Join-Path $DriverRoot "vbaudio_cable64_win10.cat"
   $setup = Join-Path $DriverRoot "VBCABLE_Setup_x64.exe"
