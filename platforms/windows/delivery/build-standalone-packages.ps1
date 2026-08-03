@@ -55,16 +55,6 @@ function Get-SHA256([string] $Path) {
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-if ($Version -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\.(?<build>\d+))?(?:-[0-9A-Za-z.-]+)?$') {
-  throw "Invalid version: $Version"
-}
-$VersionInfoVersion = @(
-  [int] $Matches.major,
-  [int] $Matches.minor,
-  [int] $Matches.patch,
-  $(if ($Matches.build) { [int] $Matches.build } else { 0 })
-) -join '.'
-
 $productCatalog = @{
   xiaomi = [pscustomobject]@{
     Id = "xiaomi"
@@ -102,19 +92,40 @@ $selectedProducts = @($Product | Select-Object -Unique | ForEach-Object {
   $productCatalog[$_]
 })
 
+# The executable's declared version is the single source of truth.  This also
+# prevents a stale CI command-line argument from producing an installer whose
+# filename and embedded application version disagree.
+$declaredVersions = @($selectedProducts | ForEach-Object {
+  $text = Get-Content -LiteralPath (Join-Path $Project $_.Entry) -Raw -Encoding UTF8
+  $match = [regex]::Match($text, 'APP_VERSION\s*=\s*"([^"]+)"')
+  if (-not $match.Success) { throw "APP_VERSION is missing: $($_.Entry)" }
+  $match.Groups[1].Value
+})
+$uniqueVersions = @($declaredVersions | Select-Object -Unique)
+if ($uniqueVersions.Count -ne 1) {
+  throw "Selected products declare different versions: $($uniqueVersions -join ', ')"
+}
+$declaredVersion = $uniqueVersions[0]
+if ($Version -ne $declaredVersion) {
+  Write-Warning "Ignoring requested version $Version; source declares $declaredVersion"
+  $Version = $declaredVersion
+}
+if ($Version -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\.(?<build>\d+))?(?:-[0-9A-Za-z.-]+)?$') {
+  throw "Invalid version: $Version"
+}
+$VersionInfoVersion = @(
+  [int] $Matches.major,
+  [int] $Matches.minor,
+  [int] $Matches.patch,
+  $(if ($Matches.build) { [int] $Matches.build } else { 0 })
+) -join '.'
+
 & (Join-Path $Project "scripts\check-public-boundary.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Public boundary check failed: $LASTEXITCODE" }
 
 if (-not $SkipThirdPartyFetch) {
   & (Join-Path $Project "scripts\fetch-third-party.ps1")
   if ($LASTEXITCODE -ne 0) { throw "Third-party asset fetch failed: $LASTEXITCODE" }
-}
-
-foreach ($productDefinition in $selectedProducts) {
-  $text = Get-Content -LiteralPath (Join-Path $Project $productDefinition.Entry) -Raw -Encoding UTF8
-  if (-not $text.Contains(('APP_VERSION = "{0}"' -f $Version))) {
-    throw "Standalone version is not synchronized: $($productDefinition.Entry)"
-  }
 }
 
 & $BuildPython -m unittest discover -s (Join-Path $Project "tests") -p "test_*.py" -v

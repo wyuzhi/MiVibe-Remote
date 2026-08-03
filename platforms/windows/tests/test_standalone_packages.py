@@ -38,6 +38,8 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
         self.assertIn('OutputPrefix = "MiVibeRemoteSetup"', text)
         self.assertIn('Checksum = $checksumPath', text)
+        self.assertIn("source declares $declaredVersion", text)
+        self.assertIn("$Version = $declaredVersion", text)
 
     def test_xiaomi_settings_has_redistributable_remote_fallback(self) -> None:
         text = (
