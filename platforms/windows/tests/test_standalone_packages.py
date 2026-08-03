@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import ast
 import os
+import shutil
 import subprocess
 import unittest
 
@@ -87,14 +88,15 @@ class StandalonePackageTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Authenticode validation requires Windows")
     def test_official_vb_cable_package_has_expected_signers(self) -> None:
         script = SETUP / "configure-xiaomi-audio.ps1"
+        powershell = shutil.which("pwsh.exe") or shutil.which("powershell.exe")
+        self.assertIsNotNone(powershell)
         powershell_environment = os.environ.copy()
-        # GitHub invokes the build from PowerShell 7.  Its PSModulePath is not
-        # compatible with the Windows PowerShell 5.1 executable used by the
-        # installed app, so let powershell.exe initialize its native defaults.
+        # Let the selected shell initialize its own module search path instead
+        # of inheriting one from the parent GitHub Actions shell.
         powershell_environment.pop("PSModulePath", None)
         completed = subprocess.run(
             [
-                "powershell.exe",
+                powershell,
                 "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
