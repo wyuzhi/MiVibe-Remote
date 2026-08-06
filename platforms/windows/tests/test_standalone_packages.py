@@ -37,7 +37,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.12"', text)
+        self.assertIn('[string] $Version = "0.1.13"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -52,9 +52,10 @@ class StandalonePackageTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("def _draw_remote_silhouette", text)
         self.assertIn("self._draw_remote_silhouette()", text)
-        self.assertIn("小米蓝牙遥控器 2", text)
+        self.assertIn("MiVibe Remote 2", text)
         self.assertIn('fill="#d7d9db"', text)
-        self.assertIn('text="xiaomi"', text)
+        self.assertIn('text="MiVibe"', text)
+        self.assertNotIn('text="xiaomi"', text)
 
     def test_xiaomi_settings_scrolls_on_short_windows_and_draws_silver_remote(self) -> None:
         text = (
@@ -64,7 +65,9 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn('self.root.bind("<MouseWheel>"', text)
         self.assertNotIn('self.root.minsize(1235, 900)', text)
         self.assertIn('fill="#d7d9db"', text)
-        self.assertIn('text="xiaomi"', text)
+        self.assertIn('text="MiVibe"', text)
+        self.assertIn('text="MiVibe Remote"', text)
+        self.assertIn('"PresetActive.TButton"', text)
 
     def test_side_specific_hotkeys_have_scan_code_sender(self) -> None:
         text = (SOURCE / "bridges" / "raw_input_bridge.py").read_text(
