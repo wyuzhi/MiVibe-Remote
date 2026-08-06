@@ -53,12 +53,8 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("def _draw_remote_silhouette", text)
         self.assertIn("self._draw_remote_silhouette()", text)
         self.assertIn("小米蓝牙遥控器 2", text)
-        self.assertTrue(
-            (SOURCE / "bridges" / "xiaomi" / "assets" / "mivibe-remote-cutout.png").is_file()
-        )
-        spec = (SOURCE / "XiaomiRemoteBridge.spec").read_text(encoding="utf-8")
-        self.assertIn('remote_art = assets / "mivibe-remote-cutout.png"', spec)
-        self.assertIn('(str(remote_art), "bridges/xiaomi/assets")', spec)
+        self.assertIn('fill="#d7d9db"', text)
+        self.assertIn('text="xiaomi"', text)
 
     def test_xiaomi_settings_scrolls_on_short_windows_and_draws_silver_remote(self) -> None:
         text = (

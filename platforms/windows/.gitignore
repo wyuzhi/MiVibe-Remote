@@ -17,7 +17,6 @@ Desktop.ini
 source/bridges/xiaomi/assets/*.jpg
 source/bridges/xiaomi/assets/*.jpeg
 source/bridges/xiaomi/assets/*.png
-!source/bridges/xiaomi/assets/mivibe-remote-cutout.png
 source/bridges/xiaomi/assets/*.xz
 delivery/vendor/
 delivery/out/

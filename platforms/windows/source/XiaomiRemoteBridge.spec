@@ -8,7 +8,6 @@ source = Path(SPECPATH).resolve()
 assets = source / "bridges" / "xiaomi" / "assets"
 frida_gadget = assets / "frida-gadget-17.15.3-windows-x86_64.dll.xz"
 app_icon = assets / "MiVibeRemote.ico"
-remote_art = assets / "mivibe-remote-cutout.png"
 
 if not frida_gadget.is_file():
     raise SystemExit(
@@ -21,7 +20,6 @@ winrt_datas, winrt_binaries, winrt_hiddenimports = collect_all(
 
 datas = [
     (str(frida_gadget), "bridges/xiaomi/assets"),
-    (str(remote_art), "bridges/xiaomi/assets"),
     *winrt_datas,
 ]
 

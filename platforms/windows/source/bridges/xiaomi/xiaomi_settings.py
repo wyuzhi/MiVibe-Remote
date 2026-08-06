@@ -14,8 +14,6 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from PIL import Image, ImageTk
-
 from .xiaomi_config import (
     APP_VERSION,
     BUTTONS,
@@ -43,12 +41,6 @@ from .xiaomi_config import (
 
 APP_NAME = "MiVibe Remote 设置"
 DEFAULT_HUB_PORT = 28690
-ASSET_PATH = (
-    Path(__file__).resolve().parent
-    / "assets"
-    / "mivibe-remote-cutout.png"
-)
-
 BG = "#f5f5f7"
 CARD = "#ffffff"
 TEXT = "#1d1d1f"
@@ -98,7 +90,7 @@ KEY_DISPLAY = {
     "media_play_pause": "播放 / 暂停",
 }
 
-# Coordinates are measured on the bundled transparent 264x1087 product cutout.
+# Coordinates follow a straight-on 264x1087 Remote 2 reference grid.
 REMOTE_CROP = (0, 0, 264, 1087)
 REMOTE_PHOTO_HEIGHT = 530
 REMOTE_HOTSPOTS = {
@@ -608,7 +600,6 @@ class XiaomiSettingsWindow:
             self.config["voice_hotkey"] = "+".join(voice_keys)
         self.selected_id = "power"
         self.capture_button_id = "power"
-        self.remote_photo = None
         self.hovered_id: str | None = None
 
         self.selected_label_var = tk.StringVar()
@@ -1027,17 +1018,6 @@ class XiaomiSettingsWindow:
 
         self.draw_remote()
 
-    def _load_remote_photo(self) -> ImageTk.PhotoImage | None:
-        if not ASSET_PATH.exists():
-            return None
-        source = Image.open(ASSET_PATH).convert("RGBA")
-        cropped = source.crop(REMOTE_CROP)
-        scale = REMOTE_PHOTO_HEIGHT / cropped.height
-        width = round(cropped.width * scale)
-        resampling = getattr(Image, "Resampling", Image).LANCZOS
-        resized = cropped.resize((width, REMOTE_PHOTO_HEIGHT), resampling)
-        return ImageTk.PhotoImage(resized)
-
     def _display_bbox(self, source_bbox: tuple[int, int, int, int]) -> tuple[float, ...]:
         left, top, _right, _bottom = REMOTE_CROP
         scale = REMOTE_PHOTO_HEIGHT / (REMOTE_CROP[3] - REMOTE_CROP[1])
@@ -1053,21 +1033,7 @@ class XiaomiSettingsWindow:
 
     def draw_remote(self) -> None:
         self.canvas.delete("all")
-        try:
-            self.remote_photo = self._load_remote_photo()
-        except Exception:
-            self.remote_photo = None
-        if self.remote_photo is None:
-            self._draw_remote_silhouette()
-            self._draw_hotspot_overlay()
-            return
-        self.canvas.create_image(
-            180,
-            0,
-            image=self.remote_photo,
-            anchor="n",
-            tags=("remote_photo",),
-        )
+        self._draw_remote_silhouette()
         self._draw_hotspot_overlay()
 
     def _draw_remote_silhouette(self) -> None:
