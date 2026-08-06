@@ -81,6 +81,7 @@ INPUT_KEYBOARD = 1
 KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
+KEYEVENTF_SCANCODE = 0x0008
 MAPVK_VK_TO_VSC = 0
 
 
@@ -534,6 +535,40 @@ def send_hotkey(keys: list[str], hold_ms: int = 70) -> None:
     for vk in reversed(vks):
         send_vk(vk, True)
         time.sleep(0.01)
+
+
+def scan_code_input(vk: int, key_up: bool = False) -> INPUT:
+    """Build a hardware-like keyboard event for side-specific shortcuts."""
+    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
+    if not scan:
+        raise ValueError(f"No keyboard scan code for virtual key 0x{vk:02X}")
+    # MAPVK_VK_TO_VSC may encode E0/E1 in the high byte on newer Windows.
+    # KEYBDINPUT carries that prefix through KEYEVENTF_EXTENDEDKEY instead.
+    scan &= 0xFF
+    flags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if key_up else 0)
+    if vk in EXTENDED_VKS:
+        flags |= KEYEVENTF_EXTENDEDKEY
+    return INPUT(INPUT_KEYBOARD, INPUT_UNION(ki=KEYBDINPUT(0, scan, flags, 0, 0)))
+
+
+def send_scan_code_vk(vk: int, key_up: bool = False) -> None:
+    inp = scan_code_input(vk, key_up)
+    sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+    if sent != 1:
+        raise OSError(last_error_message("SendInput scan code failed"))
+
+
+def send_scan_code_hotkey(keys: list[str], hold_ms: int = 120) -> None:
+    """Send a chord as physical scan codes so left/right modifiers survive."""
+    vks = [resolve_vk(key) for key in keys]
+    for vk in vks:
+        send_scan_code_vk(vk, False)
+        time.sleep(0.015)
+    if hold_ms > 0:
+        time.sleep(min(hold_ms, 1000) / 1000)
+    for vk in reversed(vks):
+        send_scan_code_vk(vk, True)
+        time.sleep(0.015)
 
 
 def send_hotkey_down(keys: list[str]) -> None:

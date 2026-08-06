@@ -8,6 +8,7 @@ from PyInstaller.utils.hooks import collect_all
 source = Path(SPECPATH).resolve()
 assets = source / "bridges" / "xiaomi" / "assets"
 frida_gadget = assets / "frida-gadget-17.15.3-windows-x86_64.dll.xz"
+remote_art = assets / "mivibe-remote-cutout.png"
 
 if not frida_gadget.is_file():
     raise SystemExit(
@@ -25,6 +26,7 @@ datas = [
         "bridges/hanvon",
     ),
     (str(frida_gadget), "bridges/xiaomi/assets"),
+    (str(remote_art), "bridges/xiaomi/assets"),
     *winrt_datas,
 ]
 

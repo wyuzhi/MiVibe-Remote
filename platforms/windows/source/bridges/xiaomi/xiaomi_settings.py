@@ -28,6 +28,7 @@ from .xiaomi_config import (
     WECHAT_VOICE_TRIGGER_MODE,
     apply_remote_identity,
     codex_button_bindings,
+    hotkey_injection_method,
     hotkey_tokens,
     load_config,
     load_keys_config,
@@ -45,7 +46,7 @@ DEFAULT_HUB_PORT = 28690
 ASSET_PATH = (
     Path(__file__).resolve().parent
     / "assets"
-    / "xiaomi-bluetooth-remote-2-pro-front.jpg"
+    / "mivibe-remote-cutout.png"
 )
 
 BG = "#f5f5f7"
@@ -97,23 +98,23 @@ KEY_DISPLAY = {
     "media_play_pause": "播放 / 暂停",
 }
 
-# Coordinates are measured on the searched 1250x1038 straight-on photograph.
-REMOTE_CROP = (450, 40, 785, 980)
+# Coordinates are measured on the bundled transparent 264x1087 product cutout.
+REMOTE_CROP = (0, 0, 264, 1087)
 REMOTE_PHOTO_HEIGHT = 530
 REMOTE_HOTSPOTS = {
-    "power": (530, 86, 585, 141, "oval"),
-    "mic": (649, 85, 704, 140, "oval"),
-    "up": (580, 162, 650, 225, "oval"),
-    "left": (522, 218, 590, 292, "oval"),
-    "ok": (570, 207, 660, 300, "oval"),
-    "right": (640, 218, 713, 292, "oval"),
-    "down": (580, 285, 650, 349, "oval"),
-    "back": (532, 361, 607, 436, "oval"),
-    "volume_up": (627, 361, 703, 436, "oval"),
-    "home": (532, 448, 607, 523, "oval"),
-    "volume_down": (627, 448, 703, 523, "oval"),
-    "menu": (532, 535, 607, 610, "oval"),
-    "tv": (627, 535, 703, 610, "oval"),
+    "power": (31, 38, 107, 118, "oval"),
+    "mic": (155, 38, 229, 118, "oval"),
+    "up": (90, 141, 174, 220, "oval"),
+    "left": (25, 206, 105, 289, "oval"),
+    "ok": (78, 194, 185, 304, "oval"),
+    "right": (158, 206, 239, 289, "oval"),
+    "down": (90, 285, 175, 364, "oval"),
+    "back": (34, 376, 122, 470, "oval"),
+    "volume_up": (147, 376, 236, 468, "oval"),
+    "home": (34, 479, 122, 573, "oval"),
+    "volume_down": (147, 464, 236, 556, "oval"),
+    "menu": (34, 586, 122, 681, "oval"),
+    "tv": (147, 586, 236, 681, "oval"),
 }
 
 
@@ -640,8 +641,12 @@ class XiaomiSettingsWindow:
 
     def _build(self) -> None:
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry("1240x900")
-        self.root.minsize(1235, 900)
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        initial_width = max(820, min(1240, screen_width - 48))
+        initial_height = max(620, min(900, screen_height - 88))
+        self.root.geometry(f"{initial_width}x{initial_height}")
+        self.root.minsize(min(900, initial_width), min(620, initial_height))
         self.root.configure(bg=BG)
 
         style = ttk.Style(self.root)
@@ -686,8 +691,37 @@ class XiaomiSettingsWindow:
             font=("Microsoft YaHei UI", 9),
         )
 
-        outer = tk.Frame(self.root, bg=BG, padx=22, pady=18)
-        outer.pack(fill="both", expand=True)
+        # High-DPI Windows machines often have fewer than 900 logical vertical
+        # pixels. Keep the footer at its natural height and scroll the complete
+        # page instead of letting Tk clip its buttons into thin strips.
+        page = tk.Canvas(
+            self.root,
+            bg=BG,
+            highlightthickness=0,
+            bd=0,
+            yscrollincrement=24,
+        )
+        page_scroll = ttk.Scrollbar(self.root, orient="vertical", command=page.yview)
+        page.configure(yscrollcommand=page_scroll.set)
+        page_scroll.pack(side="right", fill="y")
+        page.pack(side="left", fill="both", expand=True)
+
+        outer = tk.Frame(page, bg=BG, padx=22, pady=18)
+        page_window = page.create_window((0, 0), window=outer, anchor="nw")
+
+        def update_scroll_region(_event=None) -> None:
+            page.configure(scrollregion=page.bbox("all"))
+
+        def fit_page_width(event) -> None:
+            page.itemconfigure(page_window, width=event.width)
+
+        def scroll_page(event) -> None:
+            if page.bbox("all") and outer.winfo_reqheight() > page.winfo_height():
+                page.yview_scroll(-int(event.delta / 120), "units")
+
+        outer.bind("<Configure>", update_scroll_region)
+        page.bind("<Configure>", fit_page_width)
+        self.root.bind("<MouseWheel>", scroll_page, add="+")
 
         header = tk.Frame(outer, bg=BG)
         header.pack(fill="x", pady=(0, 14))
@@ -757,7 +791,7 @@ class XiaomiSettingsWindow:
         self.canvas.bind("<Leave>", self._canvas_leave)
         tk.Label(
             left_card,
-            text="原创遥控器示意图  ·  蓝框表示当前选择",
+            text="小米蓝牙遥控器 2  ·  蓝框表示当前选择",
             bg=CARD,
             fg="#8a8a8e",
             font=("Microsoft YaHei UI", 8),
@@ -996,7 +1030,7 @@ class XiaomiSettingsWindow:
     def _load_remote_photo(self) -> ImageTk.PhotoImage | None:
         if not ASSET_PATH.exists():
             return None
-        source = Image.open(ASSET_PATH).convert("RGB")
+        source = Image.open(ASSET_PATH).convert("RGBA")
         cropped = source.crop(REMOTE_CROP)
         scale = REMOTE_PHOTO_HEIGHT / cropped.height
         width = round(cropped.width * scale)
@@ -1037,87 +1071,263 @@ class XiaomiSettingsWindow:
         self._draw_hotspot_overlay()
 
     def _draw_remote_silhouette(self) -> None:
-        """Draw a redistributable fallback using the same clickable geometry."""
-        left, top, right, bottom = 85, 3, 275, 527
-        radius = 38
-        body_fill = "#171719"
-        body_outline = "#35353a"
-        self.canvas.create_rectangle(
-            left,
-            top + radius,
-            right,
-            bottom - radius,
-            fill=body_fill,
-            outline=body_outline,
-            width=2,
-            tags=("remote_body",),
+        """Draw a clean silver Remote 2 fallback without third-party artwork."""
+
+        def rounded_box(
+            x1: float,
+            y1: float,
+            x2: float,
+            y2: float,
+            radius: float,
+            *,
+            fill: str,
+            outline: str = "",
+            width: int = 1,
+            tags: tuple[str, ...] = (),
+        ) -> None:
+            points = (
+                x1 + radius,
+                y1,
+                x2 - radius,
+                y1,
+                x2,
+                y1,
+                x2,
+                y1 + radius,
+                x2,
+                y2 - radius,
+                x2,
+                y2,
+                x2 - radius,
+                y2,
+                x1 + radius,
+                y2,
+                x1,
+                y2,
+                x1,
+                y2 - radius,
+                x1,
+                y1 + radius,
+                x1,
+                y1,
+            )
+            self.canvas.create_polygon(
+                points,
+                smooth=True,
+                splinesteps=24,
+                fill=fill,
+                outline=outline,
+                width=width,
+                tags=tags,
+            )
+
+        left, top, right, bottom = 115, 3, 245, 527
+        rounded_box(
+            left + 4,
+            top + 5,
+            right + 5,
+            bottom + 4,
+            17,
+            fill="#c9c9cc",
+            tags=("remote_shadow",),
         )
-        self.canvas.create_rectangle(
-            left + radius,
+        rounded_box(
+            left,
             top,
-            right - radius,
-            bottom,
-            fill=body_fill,
-            outline=body_fill,
-            tags=("remote_body",),
-        )
-        self.canvas.create_oval(
-            left,
-            top,
             right,
-            top + radius * 2,
-            fill=body_fill,
-            outline=body_outline,
+            bottom,
+            17,
+            fill="#d7d9db",
+            outline="#9fa2a5",
             width=2,
             tags=("remote_body",),
         )
-        self.canvas.create_oval(
-            left,
-            bottom - radius * 2,
-            right,
-            bottom,
-            fill=body_fill,
-            outline=body_outline,
+        # Subtle aluminium bands make the fallback read as the real silver body
+        # instead of the old black pill-shaped placeholder.
+        self.canvas.create_rectangle(
+            left + 12,
+            top + 13,
+            right - 12,
+            bottom - 13,
+            fill="#e4e5e6",
+            outline="",
+            tags=("remote_body",),
+        )
+        self.canvas.create_line(
+            left + 11,
+            top + 20,
+            left + 11,
+            bottom - 20,
+            fill="#f7f7f8",
             width=2,
+            tags=("remote_body",),
+        )
+        self.canvas.create_line(
+            right - 11,
+            top + 20,
+            right - 11,
+            bottom - 20,
+            fill="#b9bbbd",
             tags=("remote_body",),
         )
 
-        labels = {
-            "power": "⏻",
-            "mic": "MIC",
-            "up": "↑",
-            "left": "←",
-            "ok": "OK",
-            "right": "→",
-            "down": "↓",
-            "back": "↩",
-            "volume_up": "VOL+",
-            "home": "⌂",
-            "volume_down": "VOL−",
-            "menu": "☰",
-            "tv": "TV",
-        }
-        for button_id, (x1, y1, x2, y2, _shape) in REMOTE_HOTSPOTS.items():
-            bbox = self._display_bbox((x1, y1, x2, y2))
+        button_fill = "#202124"
+        button_outline = "#0e0f11"
+        glyph = "#f6f7f8"
+
+        def button_oval(button_id: str, label: str, size: int = 10) -> None:
+            x1, y1, x2, y2 = self._display_bbox(REMOTE_HOTSPOTS[button_id][:4])
             self.canvas.create_oval(
-                *bbox,
-                fill="#29292d",
-                outline="#4b4b51",
-                width=1,
+                x1,
+                y1,
+                x2,
+                y2,
+                fill=button_fill,
+                outline=button_outline,
+                width=2,
                 tags=("remote_button",),
             )
-            center_x = (bbox[0] + bbox[2]) / 2
-            center_y = (bbox[1] + bbox[3]) / 2
-            label = labels[button_id]
-            font_size = 7 if len(label) > 2 else 10
+            self.canvas.create_arc(
+                x1 + 2,
+                y1 + 2,
+                x2 - 2,
+                y2 - 2,
+                start=25,
+                extent=130,
+                style="arc",
+                outline="#55585d",
+                tags=("remote_button",),
+            )
             self.canvas.create_text(
-                center_x,
-                center_y,
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
                 text=label,
-                fill="#f2f2f7",
-                font=("Segoe UI Symbol", font_size, "bold"),
+                fill=glyph,
+                font=("Segoe UI Symbol", size, "bold"),
                 tags=("remote_button",),
             )
+
+        button_oval("power", "⏻", 11)
+        button_oval("mic", "MIC", 7)
+
+        # One circular D-pad ring, matching the actual product construction.
+        self.canvas.create_oval(
+            126,
+            68,
+            234,
+            177,
+            fill=button_fill,
+            outline=button_outline,
+            width=2,
+            tags=("remote_button",),
+        )
+        self.canvas.create_arc(
+            130,
+            72,
+            230,
+            173,
+            start=28,
+            extent=120,
+            style="arc",
+            outline="#505258",
+            tags=("remote_button",),
+        )
+        for button_id, label in (
+            ("up", "↑"),
+            ("left", "←"),
+            ("right", "→"),
+            ("down", "↓"),
+        ):
+            x1, y1, x2, y2 = self._display_bbox(REMOTE_HOTSPOTS[button_id][:4])
+            self.canvas.create_text(
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
+                text=label,
+                fill="#d8dade",
+                font=("Segoe UI Symbol", 10),
+                tags=("remote_button",),
+            )
+        ok_x1, ok_y1, ok_x2, ok_y2 = self._display_bbox(REMOTE_HOTSPOTS["ok"][:4])
+        self.canvas.create_oval(
+            ok_x1,
+            ok_y1,
+            ok_x2,
+            ok_y2,
+            fill="#282a2e",
+            outline="#07080a",
+            width=2,
+            tags=("remote_button",),
+        )
+        self.canvas.create_text(
+            (ok_x1 + ok_x2) / 2,
+            (ok_y1 + ok_y2) / 2,
+            text="OK",
+            fill=glyph,
+            font=("Segoe UI", 9, "bold"),
+            tags=("remote_button",),
+        )
+
+        button_oval("back", "‹", 17)
+        button_oval("home", "⌂", 11)
+        button_oval("menu", "☰", 10)
+        button_oval("tv", "TV", 7)
+
+        volume_top = self._display_bbox(REMOTE_HOTSPOTS["volume_up"][:4])
+        volume_bottom = self._display_bbox(REMOTE_HOTSPOTS["volume_down"][:4])
+        vx1, vx2 = volume_top[0], volume_top[2]
+        vy1, vy2 = volume_top[1], volume_bottom[3]
+        rounded_box(
+            vx1,
+            vy1,
+            vx2,
+            vy2,
+            (vx2 - vx1) / 2,
+            fill=button_fill,
+            outline=button_outline,
+            width=2,
+            tags=("remote_button",),
+        )
+        self.canvas.create_line(
+            vx1 + 5,
+            (volume_top[3] + volume_bottom[1]) / 2,
+            vx2 - 5,
+            (volume_top[3] + volume_bottom[1]) / 2,
+            fill="#484a4f",
+            tags=("remote_button",),
+        )
+        self.canvas.create_text(
+            (vx1 + vx2) / 2,
+            (volume_top[1] + volume_top[3]) / 2,
+            text="+",
+            fill=glyph,
+            font=("Segoe UI", 16),
+            tags=("remote_button",),
+        )
+        self.canvas.create_text(
+            (vx1 + vx2) / 2,
+            (volume_bottom[1] + volume_bottom[3]) / 2,
+            text="−",
+            fill=glyph,
+            font=("Segoe UI", 15),
+            tags=("remote_button",),
+        )
+
+        self.canvas.create_text(
+            180,
+            405,
+            text="N",
+            fill="#777a7e",
+            font=("Segoe UI", 11, "bold"),
+            tags=("remote_body",),
+        )
+        self.canvas.create_text(
+            180,
+            494,
+            text="xiaomi",
+            fill="#777a7e",
+            font=("Segoe UI", 10),
+            tags=("remote_body",),
+        )
 
     def _draw_hotspot_overlay(self) -> None:
         self.canvas.delete("hotspot")
@@ -1262,6 +1472,7 @@ class XiaomiSettingsWindow:
         action = {
             "type": "hotkey",
             "keys": tokens,
+            "injection": hotkey_injection_method(tokens),
             "capture": result.get("capture", {}),
         }
         self.working_bindings[self.capture_button_id] = [action]
@@ -1294,6 +1505,7 @@ class XiaomiSettingsWindow:
             {
                 "type": "hotkey",
                 "keys": keys,
+                "injection": hotkey_injection_method(keys),
                 "capture": {"source": "manual"},
             }
         ]

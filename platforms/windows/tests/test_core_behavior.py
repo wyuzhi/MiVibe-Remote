@@ -98,6 +98,27 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         hook.preset_cycle_handler.assert_called_once_with()
         hook._load_bridge_core.assert_not_called()
 
+    def test_left_ctrl_mapping_uses_physical_scan_code_injection(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
+            xiaomi_core.XiaomiSpecialKeyHook
+        )
+        hook.button_bindings = {
+            "power": [{"type": "hotkey", "keys": ["leftctrl", "z"]}]
+        }
+        hook.key_send_lock = threading.Lock()
+        keyboard = mock.Mock()
+        hook._load_bridge_core = mock.Mock(return_value=keyboard)
+
+        with mock.patch("builtins.print") as output:
+            handled = hook._perform_button_action("power")
+
+        self.assertTrue(handled)
+        keyboard.send_scan_code_hotkey.assert_called_once_with(
+            ["leftctrl", "z"], 120
+        )
+        keyboard.send_hotkey.assert_not_called()
+        self.assertIn("injection=scan_code", output.call_args_list[-1].args[0])
+
     def test_injector_declares_64_bit_windows_handle_signatures(self) -> None:
         source = Path(hid_tap_injector.__file__).read_text(encoding="utf-8")
         self.assertIn("kernel32.GetCurrentProcess.restype = wintypes.HANDLE", source)
