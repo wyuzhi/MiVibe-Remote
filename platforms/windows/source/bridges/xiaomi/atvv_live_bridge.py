@@ -60,6 +60,7 @@ from .xiaomi_config import (
     load_config,
     load_keys_config,
     resolve_hotkey_virtual_keys,
+    hotkey_injection_method,
     save_config,
     save_keys_config,
     voice_hotkey_from_configs,
@@ -445,6 +446,8 @@ class XiaomiSpecialKeyHook:
             return False
         try:
             action_type = str(action.get("type", "hotkey"))
+            log_keys: list[str] = []
+            log_injection = "-"
             if action_type == "preset_cycle":
                 if self.preset_cycle_handler is None:
                     return False
@@ -467,12 +470,25 @@ class XiaomiSpecialKeyHook:
                 else:
                     core = self._load_bridge_core()
                     if action_type == "hotkey":
-                        core.send_hotkey(
-                            list(action.get("keys", [])),
-                            int(action.get("hold_ms", 70)),
+                        keys = list(action.get("keys", []))
+                        injection = str(
+                            action.get("injection") or hotkey_injection_method(keys)
                         )
+                        log_keys = [str(key) for key in keys]
+                        log_injection = injection
+                        if injection == "scan_code":
+                            core.send_scan_code_hotkey(
+                                keys,
+                                int(action.get("hold_ms", 120)),
+                            )
+                        else:
+                            core.send_hotkey(
+                                keys,
+                                int(action.get("hold_ms", 70)),
+                            )
                     elif action_type == "key":
-                        core.send_hotkey([str(action.get("key", ""))])
+                        log_keys = [str(action.get("key", ""))]
+                        core.send_hotkey(log_keys)
                     elif action_type == "text":
                         core.send_text(str(action.get("text", "")))
                     else:
@@ -482,7 +498,8 @@ class XiaomiSpecialKeyHook:
                         )
                         return False
             print(
-                f"XIAOMI MAPPING DONE key={name} action={action_type}",
+                f"XIAOMI MAPPING DONE key={name} action={action_type} "
+                f"keys={'+'.join(log_keys) or '-'} injection={log_injection}",
                 flush=True,
             )
             return True

@@ -16,7 +16,7 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.11"
+APP_VERSION = "0.1.12"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 MAPPING_SCHEMA_VERSION = 1
 
@@ -28,6 +28,16 @@ WECHAT_VOICE_HOTKEY = ("ctrl", "win")
 WECHAT_VOICE_TRIGGER_MODE = "hold"
 DEFAULT_VOICE_HOTKEY = CODEX_VOICE_HOTKEY
 PRESET_ORDER = ("codex", "workbuddy", "wechat")
+SIDED_MODIFIER_KEYS = frozenset(
+    {
+        "leftctrl",
+        "rightctrl",
+        "leftshift",
+        "rightshift",
+        "leftalt",
+        "rightalt",
+    }
+)
 
 HOTKEY_VK = {
     "backspace": 0x08,
@@ -418,6 +428,15 @@ def hotkey_tokens(value: str | list[str] | tuple[str, ...]) -> list[str]:
         if token and token not in result:
             result.append(token)
     return result
+
+
+def hotkey_injection_method(value: str | list[str] | tuple[str, ...]) -> str:
+    """Use scan codes when an app distinguishes the physical modifier side."""
+    return (
+        "scan_code"
+        if any(token in SIDED_MODIFIER_KEYS for token in hotkey_tokens(value))
+        else "virtual_key"
+    )
 
 
 def resolve_hotkey_virtual_keys(value: str | list[str] | tuple[str, ...]) -> list[int]:

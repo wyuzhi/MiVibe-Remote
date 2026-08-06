@@ -156,6 +156,16 @@ class XiaomiConfigTests(unittest.TestCase):
         self.assertEqual(default_keys_config()["device_match"], [])
         self.assertFalse(hasattr(xiaomi_config, "LEGACY_TEST_ADDRESS"))
 
+    def test_side_specific_modifier_uses_scan_code_injection(self):
+        self.assertEqual(
+            xiaomi_config.hotkey_injection_method(["leftctrl", "z"]),
+            "scan_code",
+        )
+        self.assertEqual(
+            xiaomi_config.hotkey_injection_method(["ctrl", "z"]),
+            "virtual_key",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
