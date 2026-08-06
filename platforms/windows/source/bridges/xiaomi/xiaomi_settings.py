@@ -40,15 +40,19 @@ from .xiaomi_config import (
 
 APP_NAME = "MiVibe Remote 设置"
 DEFAULT_HUB_PORT = 28690
-BG = "#f5f5f7"
+BG = "#eef2f7"
 CARD = "#ffffff"
-TEXT = "#1d1d1f"
-MUTED = "#6e6e73"
-BORDER = "#d2d2d7"
-BLUE = "#007aff"
-BLUE_DARK = "#0062cc"
-SOFT_BLUE = "#edf5ff"
-SOFT_GRAY = "#f7f7f9"
+TEXT = "#152033"
+MUTED = "#64748b"
+BORDER = "#dce3ed"
+BLUE = "#1677ff"
+BLUE_DARK = "#0d5fd4"
+CYAN = "#25c2f5"
+NAVY = "#101b31"
+NAVY_LIGHT = "#1a2945"
+SOFT_BLUE = "#edf6ff"
+SOFT_GRAY = "#f7f9fc"
+SUCCESS = "#13a76b"
 
 BUTTON_LABELS = dict(BUTTONS)
 KEY_DISPLAY = {
@@ -609,6 +613,7 @@ class XiaomiSettingsWindow:
         self.photo_hint_var = tk.StringVar(value="点击照片中的任意按键")
         self.manual_var = tk.StringVar()
         self.save_status_var = tk.StringVar(value="所有修改会先保留在此窗口，保存后才应用")
+        self.preset_name_var = tk.StringVar()
         self.voice_help_var = tk.StringVar()
         self.voice_enabled = tk.BooleanVar(
             value=bool(self.config.get("voice_shortcut_enabled", True))
@@ -625,6 +630,7 @@ class XiaomiSettingsWindow:
         self.capture = KeyboardShortcutCapture(
             self.root, self._capture_complete, self._capture_failed
         )
+        self.preset_buttons: dict[str, ttk.Button] = {}
         self._build()
         self.select_button(self.selected_id)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -633,8 +639,8 @@ class XiaomiSettingsWindow:
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
-        initial_width = max(820, min(1240, screen_width - 48))
-        initial_height = max(620, min(900, screen_height - 88))
+        initial_width = max(900, min(1180, screen_width - 64))
+        initial_height = max(660, min(860, screen_height - 96))
         self.root.geometry(f"{initial_width}x{initial_height}")
         self.root.minsize(min(900, initial_width), min(620, initial_height))
         self.root.configure(bg=BG)
@@ -649,7 +655,7 @@ class XiaomiSettingsWindow:
             background=BLUE,
             foreground="#ffffff",
             borderwidth=0,
-            padding=(18, 10),
+            padding=(22, 11),
             font=("Microsoft YaHei UI", 10, "bold"),
         )
         style.map(
@@ -659,13 +665,17 @@ class XiaomiSettingsWindow:
         )
         style.configure(
             "Capture.TButton",
-            background=SOFT_BLUE,
-            foreground=BLUE_DARK,
-            bordercolor="#a8cffc",
-            padding=(18, 13),
+            background=BLUE,
+            foreground="#ffffff",
+            borderwidth=0,
+            padding=(18, 14),
             font=("Microsoft YaHei UI", 11, "bold"),
         )
-        style.map("Capture.TButton", background=[("active", "#dcecff")])
+        style.map(
+            "Capture.TButton",
+            background=[("active", BLUE_DARK), ("pressed", BLUE_DARK)],
+            foreground=[("active", "#ffffff")],
+        )
         style.configure(
             "Quiet.TButton",
             background=CARD,
@@ -674,12 +684,42 @@ class XiaomiSettingsWindow:
             padding=(12, 8),
             font=("Microsoft YaHei UI", 9),
         )
+        style.map("Quiet.TButton", background=[("active", "#f1f5f9")])
+        style.configure(
+            "Preset.TButton",
+            background="#f2f5f9",
+            foreground="#475569",
+            bordercolor="#d9e1eb",
+            padding=(14, 9),
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.configure(
+            "PresetActive.TButton",
+            background=NAVY,
+            foreground="#ffffff",
+            bordercolor=NAVY,
+            padding=(14, 9),
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.map(
+            "PresetActive.TButton",
+            background=[("active", NAVY_LIGHT)],
+            foreground=[("active", "#ffffff")],
+        )
         style.configure(
             "Apple.TCheckbutton",
             background=CARD,
             foreground=TEXT,
             font=("Microsoft YaHei UI", 9),
         )
+        style.configure(
+            "Voice.TCheckbutton",
+            background=SOFT_GRAY,
+            foreground=TEXT,
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        style.configure("TEntry", padding=(8, 8), fieldbackground="#ffffff")
+        style.configure("TCombobox", padding=(7, 6))
 
         # High-DPI Windows machines often have fewer than 900 logical vertical
         # pixels. Keep the footer at its natural height and scroll the complete
@@ -696,7 +736,7 @@ class XiaomiSettingsWindow:
         page_scroll.pack(side="right", fill="y")
         page.pack(side="left", fill="both", expand=True)
 
-        outer = tk.Frame(page, bg=BG, padx=22, pady=18)
+        outer = tk.Frame(page, bg=BG, padx=18, pady=16)
         page_window = page.create_window((0, 0), window=outer, anchor="nw")
 
         def update_scroll_region(_event=None) -> None:
@@ -713,31 +753,57 @@ class XiaomiSettingsWindow:
         page.bind("<Configure>", fit_page_width)
         self.root.bind("<MouseWheel>", scroll_page, add="+")
 
-        header = tk.Frame(outer, bg=BG)
+        header = tk.Frame(outer, bg=NAVY, padx=24, pady=18)
         header.pack(fill="x", pady=(0, 14))
-        title_block = tk.Frame(header, bg=BG)
-        title_block.pack(side="left")
+        brand_mark = tk.Label(
+            header,
+            text="M",
+            bg=CYAN,
+            fg=NAVY,
+            width=3,
+            height=1,
+            font=("Segoe UI", 18, "bold"),
+        )
+        brand_mark.pack(side="left", padx=(0, 14))
+        title_block = tk.Frame(header, bg=NAVY)
+        title_block.pack(side="left", fill="y")
         tk.Label(
             title_block,
-            text="小米蓝牙遥控器 2 按键设置",
-            bg=BG,
-            fg=TEXT,
-            font=("Microsoft YaHei UI", 18, "bold"),
+            text="MiVibe Remote",
+            bg=NAVY,
+            fg="#ffffff",
+            font=("Segoe UI", 18, "bold"),
         ).pack(anchor="w")
         tk.Label(
             title_block,
-            text="点选遥控器按键，再按一次真实键盘，就能替换映射",
-            bg=BG,
-            fg=MUTED,
+            text="小米蓝牙遥控器 2 · 按键与语音工作流控制台",
+            bg=NAVY,
+            fg="#aebbd0",
             font=("Microsoft YaHei UI", 9),
         ).pack(anchor="w", pady=(4, 0))
+        header_meta = tk.Frame(header, bg=NAVY)
+        header_meta.pack(side="right", anchor="center")
         tk.Label(
-            header,
-            text=f"v{APP_VERSION}",
-            bg=BG,
-            fg=MUTED,
+            header_meta,
+            text="当前模式",
+            bg=NAVY,
+            fg="#8191aa",
+            font=("Microsoft YaHei UI", 8),
+        ).pack(anchor="e")
+        tk.Label(
+            header_meta,
+            textvariable=self.preset_name_var,
+            bg=NAVY,
+            fg=CYAN,
+            font=("Microsoft YaHei UI", 11, "bold"),
+        ).pack(side="left", pady=(3, 0))
+        tk.Label(
+            header_meta,
+            text=f"  ·  v{APP_VERSION}",
+            bg=NAVY,
+            fg="#aebbd0",
             font=("Segoe UI", 9),
-        ).pack(side="right", anchor="n", pady=(5, 0))
+        ).pack(side="left", pady=(4, 0))
 
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True)
@@ -747,72 +813,88 @@ class XiaomiSettingsWindow:
         left_card = tk.Frame(
             body,
             bg=CARD,
-            width=390,
+            width=380,
             highlightbackground=BORDER,
             highlightthickness=1,
         )
-        left_card.grid(row=0, column=0, sticky="ns", padx=(0, 14))
+        left_card.grid(row=0, column=0, sticky="ns", padx=(0, 12))
         left_card.grid_propagate(False)
         tk.Label(
             left_card,
-            text="小米 Bluetooth Remote 2",
+            text="遥控器按键",
             bg=CARD,
             fg=TEXT,
-            font=("Microsoft YaHei UI", 11, "bold"),
-        ).pack(anchor="w", padx=16, pady=(14, 0))
+            font=("Microsoft YaHei UI", 13, "bold"),
+        ).pack(anchor="w", padx=20, pady=(18, 0))
         tk.Label(
             left_card,
             textvariable=self.photo_hint_var,
             bg=CARD,
             fg=MUTED,
-            font=("Microsoft YaHei UI", 8),
-        ).pack(anchor="w", padx=16, pady=(3, 0))
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor="w", padx=20, pady=(5, 0))
+        tk.Label(
+            left_card,
+            text="●  13 个按键均可配置",
+            bg="#eafaf4",
+            fg=SUCCESS,
+            font=("Microsoft YaHei UI", 8, "bold"),
+            padx=9,
+            pady=4,
+        ).pack(anchor="w", padx=20, pady=(12, 0))
         self.canvas = tk.Canvas(
             left_card,
             width=360,
             height=530,
-            bg=CARD,
+            bg="#fbfcfe",
             highlightthickness=0,
             cursor="hand2",
         )
-        self.canvas.pack(padx=14, pady=(7, 0))
+        self.canvas.pack(padx=10, pady=(10, 0))
         self.canvas.bind("<Button-1>", self._canvas_click)
         self.canvas.bind("<Motion>", self._canvas_motion)
         self.canvas.bind("<Leave>", self._canvas_leave)
         tk.Label(
             left_card,
-            text="小米蓝牙遥控器 2  ·  蓝框表示当前选择",
+            text="MiVibe Remote 2  ·  蓝色光圈表示当前按键",
             bg=CARD,
-            fg="#8a8a8e",
+            fg=MUTED,
             font=("Microsoft YaHei UI", 8),
-        ).pack(anchor="center", pady=(0, 10))
+        ).pack(anchor="center", pady=(0, 14))
 
         right_card = tk.Frame(
             body,
             bg=CARD,
             highlightbackground=BORDER,
             highlightthickness=1,
-            padx=24,
-            pady=20,
+            padx=26,
+            pady=22,
         )
         right_card.grid(row=0, column=1, sticky="nsew")
 
         tk.Label(
             right_card,
-            text="当前选择",
+            text="按键映射",
             bg=CARD,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 8),
+            fg=BLUE,
+            font=("Microsoft YaHei UI", 9, "bold"),
         ).pack(anchor="w")
         tk.Label(
             right_card,
             textvariable=self.selected_label_var,
             bg=CARD,
             fg=TEXT,
-            font=("Microsoft YaHei UI", 19, "bold"),
-        ).pack(anchor="w", pady=(2, 12))
+            font=("Microsoft YaHei UI", 20, "bold"),
+        ).pack(anchor="w", pady=(3, 14))
 
-        current_box = tk.Frame(right_card, bg=SOFT_GRAY, padx=14, pady=10)
+        current_box = tk.Frame(
+            right_card,
+            bg=SOFT_GRAY,
+            highlightbackground="#e7ecf3",
+            highlightthickness=1,
+            padx=16,
+            pady=12,
+        )
         current_box.pack(fill="x")
         tk.Label(
             current_box,
@@ -826,7 +908,7 @@ class XiaomiSettingsWindow:
             textvariable=self.current_mapping_var,
             bg=SOFT_GRAY,
             fg=TEXT,
-            font=("Microsoft YaHei UI", 13, "bold"),
+            font=("Microsoft YaHei UI", 14, "bold"),
         ).pack(anchor="w", pady=(3, 0))
 
         self.capture_button = ttk.Button(
@@ -835,7 +917,7 @@ class XiaomiSettingsWindow:
             command=self.toggle_capture,
             style="Capture.TButton",
         )
-        self.capture_button.pack(fill="x", pady=(18, 0))
+        self.capture_button.pack(fill="x", pady=(16, 0))
         tk.Label(
             right_card,
             textvariable=self.capture_status_var,
@@ -847,10 +929,10 @@ class XiaomiSettingsWindow:
         result_box = tk.Frame(
             right_card,
             bg=SOFT_BLUE,
-            highlightbackground="#bddbff",
+            highlightbackground="#bcdcff",
             highlightthickness=1,
-            padx=14,
-            pady=10,
+            padx=16,
+            pady=12,
         )
         result_box.pack(fill="x", pady=(14, 0))
         tk.Label(
@@ -865,7 +947,7 @@ class XiaomiSettingsWindow:
             textvariable=self.result_mapping_var,
             bg=SOFT_BLUE,
             fg=TEXT,
-            font=("Microsoft YaHei UI", 15, "bold"),
+            font=("Microsoft YaHei UI", 14, "bold"),
         ).pack(anchor="w", pady=(3, 0))
         tk.Label(
             result_box,
@@ -899,39 +981,60 @@ class XiaomiSettingsWindow:
         key_buttons.pack(fill="x", pady=(13, 0))
         ttk.Button(
             key_buttons,
-            text="清除此键映射",
+            text="清除映射",
             command=self.clear_selected,
             style="Quiet.TButton",
         ).pack(side="left")
         ttk.Button(
             key_buttons,
-            text="恢复此键默认",
+            text="恢复默认",
             command=self.restore_selected,
             style="Quiet.TButton",
         ).pack(side="left", padx=(8, 0))
         ttk.Button(
             key_buttons,
-            text="设为循环切换预设",
+            text="设为模式切换键",
             command=self.set_selected_to_preset_cycle,
             style="Quiet.TButton",
         ).pack(side="left", padx=(8, 0))
 
-        tk.Frame(right_card, bg="#e5e5ea", height=1).pack(fill="x", pady=(18, 14))
+        tk.Frame(right_card, bg="#e5eaf1", height=1).pack(fill="x", pady=(20, 16))
         tk.Label(
             right_card,
-            text="麦克风与语音（Microphone & Voice）",
+            text="语音输入",
             bg=CARD,
             fg=TEXT,
-            font=("Microsoft YaHei UI", 10, "bold"),
+            font=("Microsoft YaHei UI", 12, "bold"),
         ).pack(anchor="w")
-        voice_row = tk.Frame(right_card, bg=CARD)
-        voice_row.pack(fill="x", pady=(8, 0))
+        tk.Label(
+            right_card,
+            text="设置遥控器麦克风对应的触发方式和声音增益",
+            bg=CARD,
+            fg=MUTED,
+            font=("Microsoft YaHei UI", 8),
+        ).pack(anchor="w", pady=(3, 0))
+        voice_row = tk.Frame(
+            right_card,
+            bg=SOFT_GRAY,
+            highlightbackground="#e7ecf3",
+            highlightthickness=1,
+            padx=14,
+            pady=12,
+        )
+        voice_row.pack(fill="x", pady=(10, 0))
         ttk.Checkbutton(
             voice_row,
-            text="启用语音快捷键（Voice Hotkey）",
+            text="启用语音快捷键",
             variable=self.voice_enabled,
-            style="Apple.TCheckbutton",
+            style="Voice.TCheckbutton",
         ).pack(side="left")
+        tk.Label(
+            voice_row,
+            text="触发方式",
+            bg=SOFT_GRAY,
+            fg=MUTED,
+            font=("Microsoft YaHei UI", 8),
+        ).pack(side="left", padx=(20, 6))
         self.voice_mode_combo = ttk.Combobox(
             voice_row,
             textvariable=self.voice_trigger_mode,
@@ -941,81 +1044,114 @@ class XiaomiSettingsWindow:
         )
         self.voice_mode_combo.pack(side="left", padx=(12, 0))
         self.voice_mode_combo.bind("<<ComboboxSelected>>", self._voice_mode_changed)
-        tk.Label(
-            voice_row,
-            text="触发方式控制输入法快捷键；遥控器本身要按住才会传声音",
-            bg=CARD,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 8),
-        ).pack(side="left", padx=(6, 0))
         self.voice_help_label = tk.Label(
             right_card,
             textvariable=self.voice_help_var,
-            bg=SOFT_GRAY,
+            bg="#f2f7fd",
             fg=TEXT,
-            font=("Microsoft YaHei UI", 9),
+            font=("Microsoft YaHei UI", 8),
             justify="left",
             anchor="w",
-            padx=12,
-            pady=9,
+            padx=14,
+            pady=10,
         )
         self.voice_help_label.pack(fill="x", pady=(10, 0))
         tk.Label(
             voice_row,
             text="增益 dB",
-            bg=CARD,
+            bg=SOFT_GRAY,
             fg=MUTED,
             font=("Microsoft YaHei UI", 8),
-        ).pack(side="left", padx=(18, 6))
+        ).pack(side="left", padx=(20, 6))
         ttk.Entry(voice_row, textvariable=self.gain_db, width=7).pack(side="left")
 
-        footer = tk.Frame(outer, bg=BG)
-        footer.pack(fill="x", pady=(14, 0))
+        footer = tk.Frame(
+            outer,
+            bg=CARD,
+            highlightbackground=BORDER,
+            highlightthickness=1,
+            padx=18,
+            pady=13,
+        )
+        footer.pack(fill="x", pady=(12, 0))
+        preset_area = tk.Frame(footer, bg=CARD)
+        preset_area.pack(side="left")
         tk.Label(
-            footer,
-            textvariable=self.save_status_var,
-            bg=BG,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 8),
-        ).pack(side="left")
+            preset_area,
+            text="快捷预设",
+            bg=CARD,
+            fg=TEXT,
+            font=("Microsoft YaHei UI", 9, "bold"),
+        ).pack(side="left", padx=(0, 10))
+        for preset_id, label, command in (
+            ("codex", "Codex", self.apply_codex_preset),
+            ("workbuddy", "WorkBuddy", self.apply_workbuddy_preset),
+            ("wechat", "微信输入", self.apply_wechat_preset),
+        ):
+            button = ttk.Button(
+                preset_area,
+                text=label,
+                command=command,
+                style="Preset.TButton",
+            )
+            button.pack(side="left", padx=(0, 7))
+            self.preset_buttons[preset_id] = button
+        action_area = tk.Frame(footer, bg=CARD)
+        action_area.pack(side="right")
         ttk.Button(
-            footer,
+            action_area,
             text="关闭",
             command=self.close,
             style="Quiet.TButton",
         ).pack(side="right")
         ttk.Button(
-            footer,
+            action_area,
             text="保存并应用",
             command=self.save,
             style="Primary.TButton",
         ).pack(side="right", padx=(0, 9))
         ttk.Button(
-            footer,
-            text="恢复全部默认",
+            action_area,
+            text="重置",
             command=self.restore_all,
             style="Quiet.TButton",
         ).pack(side="right", padx=(0, 9))
-        ttk.Button(
-            footer,
-            text="微信预设",
-            command=self.apply_wechat_preset,
-            style="Quiet.TButton",
-        ).pack(side="right", padx=(0, 9))
-        ttk.Button(
-            footer,
-            text="WorkBuddy 预设",
-            command=self.apply_workbuddy_preset,
-            style="Quiet.TButton",
-        ).pack(side="right", padx=(0, 9))
-        ttk.Button(
-            footer,
-            text="Codex 预设",
-            command=self.apply_codex_preset,
-            style="Quiet.TButton",
-        ).pack(side="right", padx=(0, 9))
 
+        status_bar = tk.Frame(outer, bg=BG)
+        status_bar.pack(fill="x", pady=(7, 0))
+        tk.Label(
+            status_bar,
+            text="●",
+            bg=BG,
+            fg=SUCCESS,
+            font=("Segoe UI", 8),
+        ).pack(side="left")
+        tk.Label(
+            status_bar,
+            textvariable=self.save_status_var,
+            bg=BG,
+            fg=MUTED,
+            font=("Microsoft YaHei UI", 8),
+        ).pack(side="left", padx=(5, 0))
+
+        self._refresh_preset_styles()
         self.draw_remote()
+
+    def _refresh_preset_styles(self) -> None:
+        labels = {
+            "codex": "Codex 模式",
+            "workbuddy": "WorkBuddy 模式",
+            "wechat": "微信输入模式",
+        }
+        self.preset_name_var.set(labels.get(self.working_preset, "自定义模式"))
+        for preset_id, button in self.preset_buttons.items():
+            button.configure(
+                style=(
+                    "PresetActive.TButton"
+                    if preset_id == self.working_preset
+                    else "Preset.TButton"
+                )
+            )
 
     def _display_bbox(self, source_bbox: tuple[int, int, int, int]) -> tuple[float, ...]:
         left, top, _right, _bottom = REMOTE_CROP
@@ -1109,15 +1245,28 @@ class XiaomiSettingsWindow:
         )
         # Subtle aluminium bands make the fallback read as the real silver body
         # instead of the old black pill-shaped placeholder.
-        self.canvas.create_rectangle(
-            left + 12,
-            top + 13,
-            right - 12,
-            bottom - 13,
-            fill="#e4e5e6",
-            outline="",
-            tags=("remote_body",),
+        inner_left = left + 12
+        inner_right = right - 12
+        aluminium = (
+            "#d5d7da",
+            "#e7e8ea",
+            "#f2f3f4",
+            "#e5e7e9",
+            "#d9dbde",
+            "#eef0f1",
+            "#d7d9dc",
         )
+        band_width = (inner_right - inner_left) / len(aluminium)
+        for index, shade in enumerate(aluminium):
+            self.canvas.create_rectangle(
+                inner_left + index * band_width,
+                top + 13,
+                inner_left + (index + 1) * band_width + 1,
+                bottom - 13,
+                fill=shade,
+                outline="",
+                tags=("remote_body",),
+            )
         self.canvas.create_line(
             left + 11,
             top + 20,
@@ -1136,11 +1285,17 @@ class XiaomiSettingsWindow:
             tags=("remote_body",),
         )
 
-        button_fill = "#202124"
+        button_fill = "#171b22"
         button_outline = "#0e0f11"
         glyph = "#f6f7f8"
 
-        def button_oval(button_id: str, label: str, size: int = 10) -> None:
+        def button_oval(
+            button_id: str,
+            label: str,
+            size: int = 10,
+            *,
+            label_color: str = glyph,
+        ) -> None:
             x1, y1, x2, y2 = self._display_bbox(REMOTE_HOTSPOTS[button_id][:4])
             self.canvas.create_oval(
                 x1,
@@ -1167,13 +1322,39 @@ class XiaomiSettingsWindow:
                 (x1 + x2) / 2,
                 (y1 + y2) / 2,
                 text=label,
-                fill=glyph,
+                fill=label_color,
                 font=("Segoe UI Symbol", size, "bold"),
                 tags=("remote_button",),
             )
 
-        button_oval("power", "⏻", 11)
-        button_oval("mic", "MIC", 7)
+        button_oval("power", "⏻", 11, label_color="#ff645f")
+        button_oval("mic", "●", 7, label_color=CYAN)
+        mic_x1, mic_y1, mic_x2, mic_y2 = self._display_bbox(
+            REMOTE_HOTSPOTS["mic"][:4]
+        )
+        mic_cx = (mic_x1 + mic_x2) / 2
+        mic_cy = (mic_y1 + mic_y2) / 2
+        self.canvas.create_line(
+            mic_cx,
+            mic_cy + 2,
+            mic_cx,
+            mic_cy + 8,
+            fill=CYAN,
+            width=2,
+            tags=("remote_button",),
+        )
+        self.canvas.create_arc(
+            mic_cx - 5,
+            mic_cy - 2,
+            mic_cx + 5,
+            mic_cy + 8,
+            start=180,
+            extent=180,
+            style="arc",
+            outline=CYAN,
+            width=2,
+            tags=("remote_button",),
+        )
 
         # One circular D-pad ring, matching the actual product construction.
         self.canvas.create_oval(
@@ -1277,20 +1458,34 @@ class XiaomiSettingsWindow:
             tags=("remote_button",),
         )
 
-        self.canvas.create_text(
-            180,
-            405,
-            text="N",
-            fill="#777a7e",
-            font=("Segoe UI", 11, "bold"),
+        self.canvas.create_oval(
+            175,
+            400,
+            185,
+            410,
+            outline="#858a91",
+            width=1,
+            tags=("remote_body",),
+        )
+        self.canvas.create_line(
+            177,
+            408,
+            177,
+            402,
+            183,
+            408,
+            183,
+            402,
+            fill="#858a91",
+            width=1,
             tags=("remote_body",),
         )
         self.canvas.create_text(
             180,
-            494,
-            text="xiaomi",
-            fill="#777a7e",
-            font=("Segoe UI", 10),
+            488,
+            text="MiVibe",
+            fill="#4f5967",
+            font=("Segoe UI", 11, "bold"),
             tags=("remote_body",),
         )
 
@@ -1524,6 +1719,7 @@ class XiaomiSettingsWindow:
             "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已恢复默认，尚未保存")
+        self._refresh_preset_styles()
         self.select_button(self.selected_id)
 
     def apply_codex_preset(self) -> None:
@@ -1536,6 +1732,7 @@ class XiaomiSettingsWindow:
             "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已载入 Codex 预设，点击“保存并应用”后生效")
+        self._refresh_preset_styles()
         self.selected_id = "power"
         self.select_button(self.selected_id)
 
@@ -1549,6 +1746,7 @@ class XiaomiSettingsWindow:
             "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已载入 WorkBuddy 预设，点击“保存并应用”后生效")
+        self._refresh_preset_styles()
         self.selected_id = "power"
         self.select_button(self.selected_id)
 
@@ -1562,6 +1760,7 @@ class XiaomiSettingsWindow:
             "按住型" if WECHAT_VOICE_TRIGGER_MODE == "hold" else "开关型"
         )
         self.save_status_var.set("已载入微信预设，点击“保存并应用”后生效")
+        self._refresh_preset_styles()
         self.selected_id = "power"
         self.select_button(self.selected_id)
 

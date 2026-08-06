@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.12"
+APP_VERSION = "0.1.13"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
