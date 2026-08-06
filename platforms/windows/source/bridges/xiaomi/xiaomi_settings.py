@@ -8,7 +8,6 @@ import copy
 import ctypes
 from ctypes import wintypes
 import os
-from pathlib import Path
 import socket
 import threading
 import tkinter as tk
