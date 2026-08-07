@@ -4,6 +4,20 @@ import Testing
 
 @Suite("ATVV protocol")
 struct ATVVProtocolTests {
+    @Test func acceptsOnlyAudioPacketsImmediatelyFollowingStop() {
+        let stoppedAt = Date(timeIntervalSinceReferenceDate: 1_000)
+
+        #expect(ATVVProtocol.acceptsLateAudio(
+            lastStopAt: stoppedAt,
+            now: stoppedAt.addingTimeInterval(0.10)
+        ))
+        #expect(!ATVVProtocol.acceptsLateAudio(
+            lastStopAt: stoppedAt,
+            now: stoppedAt.addingTimeInterval(0.30)
+        ))
+        #expect(!ATVVProtocol.acceptsLateAudio(lastStopAt: nil, now: stoppedAt))
+    }
+
     @Test func parsesVersionOneCapabilities() {
         let data = Data([0x0B, 0x01, 0x00, 0x02, 0x03, 0x00, 0x78])
         let capabilities = ATVVCapabilities.parse(data)

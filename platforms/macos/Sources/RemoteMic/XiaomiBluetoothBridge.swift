@@ -514,8 +514,6 @@ final class XiaomiBluetoothBridge: NSObject {
     private func stopStreaming() {
         guard streaming else { return }
         streaming = false
-        accumulator.reset()
-        pendingSync = nil
         lastStopAt = Date()
         delegate?.bluetoothBridgeDidStopVoice(self)
         AppLogger.shared.write("ATVV STREAM STOP session=\(sessionID)")
@@ -533,12 +531,11 @@ final class XiaomiBluetoothBridge: NSObject {
             AppLogger.shared.write("ATVV AUDIO ignored_not_ready")
             return
         }
-        if !streaming {
-            if let lastStopAt, Date().timeIntervalSince(lastStopAt) < 0.3 {
-                return
-            }
+        if !streaming, !ATVVProtocol.acceptsLateAudio(lastStopAt: lastStopAt) {
             startStreaming()
             AppLogger.shared.write("ATVV STREAM implicit_audio_race")
+        } else if !streaming {
+            AppLogger.shared.write("ATVV AUDIO accepted_late_tail session=\(sessionID)")
         }
 
         let frames = accumulator.append(data, frameSize: capabilities.frameSize)

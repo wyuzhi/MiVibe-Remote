@@ -5,10 +5,17 @@ import Foundation
 
 final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     static let voiceCaptureStartupDelay: TimeInterval = 0.20
-    /// The old AVAudioPlayerNode route supplied an implicit tail buffer. The
-    /// direct CoreAudio route needs explicit silence before ending dictation so
-    /// the target app can consume and finalize the last spoken words.
-    static let voiceDrainDelay: TimeInterval = 0.45
+    /// STOP and the final audio packets use different BLE characteristics, so
+    /// briefly wait for already-sent tail packets before appending silence.
+    static let voicePacketSettleDelay = ATVVProtocol.lateAudioGracePeriod
+    /// The direct CoreAudio route needs explicit silence after the final spoken
+    /// sample so the speech recognizer does not clip the last phoneme.
+    static let voiceDrainDelay: TimeInterval = 0.30
+    /// CoreAudio reports playback at the virtual device boundary. Codex reads
+    /// through another capture buffer, so keep its held shortcut alive briefly
+    /// after playback completion before releasing it.
+    static let codexRecognitionCommitDelay: TimeInterval = 0.20
+    static let voiceDrainSafetyTimeout: TimeInterval = 4
     static let maximumVoicePreRollSamples = 16_000 * 4
 
     let settings = AppSettings()
@@ -38,6 +45,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private var voiceStartGeneration: UInt64 = 0
     private var voiceStopWorkItem: DispatchWorkItem?
     private var voiceStopGeneration: UInt64 = 0
+    private var finalizedVoiceStopGeneration: UInt64?
     private let keyHardwareSuppressor = RemoteKeyHardwareSuppressor()
     private lazy var bluetoothBridge = XiaomiBluetoothBridge(settings: settings, delegate: self)
     private lazy var hidMonitor: HIDRemoteMonitor = {
@@ -519,6 +527,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     func bluetoothBridgeDidStartVoice(_ bridge: XiaomiBluetoothBridge) {
         cancelTestToneIfNeeded(statusMessage: "小米遥控器语音进行中，已拒绝测试音", logReason: "voice_start")
         voiceStopGeneration &+= 1
+        finalizedVoiceStopGeneration = nil
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
         voiceStartGeneration &+= 1
@@ -548,6 +557,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             return
         }
         voiceStopGeneration &+= 1
+        finalizedVoiceStopGeneration = nil
         let generation = voiceStopGeneration
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
@@ -557,7 +567,28 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             )
             return
         }
-        beginVoiceDrain(generation: generation)
+        scheduleVoiceDrainAfterPacketSettle(generation: generation)
+    }
+
+    private func scheduleVoiceDrainAfterPacketSettle(generation: UInt64) {
+        voiceStopWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.voiceStopGeneration == generation,
+                  !self.isStreaming
+            else { return }
+            self.voiceStopWorkItem = nil
+            self.beginVoiceDrain(generation: generation)
+        }
+        voiceStopWorkItem = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.voicePacketSettleDelay,
+            execute: work
+        )
+        AppLogger.shared.write(
+            "VOICE DRAIN waiting_for_tail_packets settle_ms=" +
+                "\(Int(Self.voicePacketSettleDelay * 1_000))"
+        )
     }
 
     private func beginVoiceDrain(generation: UInt64) {
@@ -567,15 +598,15 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             trailingSilenceDuration: Self.voiceDrainDelay
         ) { [weak self] played in
             DispatchQueue.main.async {
-                self?.completeVoiceDrain(
+                self?.audioDrainDidComplete(
                     generation: generation,
                     reason: played ? "queue_played" : "queue_cancelled"
                 )
             }
         }
-        let timeout: TimeInterval = scheduled ? 2 : Self.voiceDrainDelay
+        let timeout = scheduled ? Self.voiceDrainSafetyTimeout : Self.voiceDrainDelay
         let safetyWork = DispatchWorkItem { [weak self] in
-            self?.completeVoiceDrain(generation: generation, reason: "safety_timeout")
+            self?.audioDrainDidComplete(generation: generation, reason: "safety_timeout")
         }
         voiceStopWorkItem = safetyWork
         DispatchQueue.main.asyncAfter(
@@ -588,10 +619,39 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         )
     }
 
-    private func completeVoiceDrain(generation: UInt64, reason: String) {
+    private func audioDrainDidComplete(generation: UInt64, reason: String) {
         guard voiceStopGeneration == generation,
+              finalizedVoiceStopGeneration != generation,
               !isStreaming
         else { return }
+        voiceStopWorkItem?.cancel()
+        let commitDelay = activeVoiceShortcutProfile == .codex
+            ? Self.codexRecognitionCommitDelay
+            : 0
+        guard commitDelay > 0 else {
+            completeVoiceDrain(generation: generation, reason: reason)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            self?.completeVoiceDrain(generation: generation, reason: reason)
+        }
+        voiceStopWorkItem = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + commitDelay,
+            execute: work
+        )
+        AppLogger.shared.write(
+            "VOICE DRAIN waiting_for_recognizer profile=codex commit_ms=" +
+                "\(Int(commitDelay * 1_000)) reason=\(reason)"
+        )
+    }
+
+    private func completeVoiceDrain(generation: UInt64, reason: String) {
+        guard voiceStopGeneration == generation,
+              finalizedVoiceStopGeneration != generation,
+              !isStreaming
+        else { return }
+        finalizedVoiceStopGeneration = generation
         voiceStopWorkItem?.cancel()
         voiceStopWorkItem = nil
         audioOutput.endSession()
@@ -694,7 +754,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 "duration_ms=\(durationMilliseconds)"
         )
         if started, !isStreaming {
-            beginVoiceDrain(generation: voiceStopGeneration)
+            scheduleVoiceDrainAfterPacketSettle(generation: voiceStopGeneration)
         }
     }
 

@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.13"
+APP_VERSION = "0.1.14"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -314,12 +314,19 @@ class XiaomiApp:
             self.detail_var.set("主窗口会继续保留。点击“打开日志”查看具体错误。")
 
     def repair_audio(self) -> None:
+        if getattr(self, "_audio_repair_running", False):
+            messagebox.showinfo(
+                "MiVibe Remote",
+                "语音驱动安装程序已在运行，请完成现有窗口后再试。",
+            )
+            return
         script = Path(sys.executable).resolve().parent / "support" / "configure-xiaomi-audio.ps1"
         if not script.is_file():
             messagebox.showerror("MiVibe Remote", f"找不到语音驱动修复脚本：\n{script}")
             return
         self.status_var.set("正在打开 VB-CABLE 官方安装程序")
         self.detail_var.set("请在官方安装窗口中点击 Install，完成后重启 Windows。")
+        self._audio_repair_running = True
 
         def run_repair() -> None:
             try:
@@ -344,6 +351,7 @@ class XiaomiApp:
             except Exception as exc:
                 log(f"audio repair failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
             finally:
+                self._audio_repair_running = False
                 self.root.after(0, self.restart_workers)
 
         threading.Thread(target=run_repair, name="xiaomi-audio-repair", daemon=True).start()
