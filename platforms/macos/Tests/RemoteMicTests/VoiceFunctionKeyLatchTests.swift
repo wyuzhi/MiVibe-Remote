@@ -6,7 +6,10 @@ import Testing
 struct VoiceFunctionKeyLatchTests {
     @Test func macOSVoicePipelinePreservesBothEdgesOfSpeech() {
         #expect(BridgeAppModel.voiceCaptureStartupDelay == 0.20)
-        #expect(BridgeAppModel.voiceDrainDelay >= 0.45)
+        #expect(BridgeAppModel.voicePacketSettleDelay >= 0.15)
+        #expect(BridgeAppModel.voiceDrainDelay >= 0.30)
+        #expect(BridgeAppModel.codexRecognitionCommitDelay >= 0.20)
+        #expect(BridgeAppModel.voiceDrainSafetyTimeout >= 4)
         #expect(BridgeAppModel.maximumVoicePreRollSamples >= 16_000)
     }
 

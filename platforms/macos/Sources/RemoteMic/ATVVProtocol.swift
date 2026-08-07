@@ -1,6 +1,18 @@
 import Foundation
 
 enum ATVVProtocol {
+    /// Control and audio notifications are delivered on different BLE
+    /// characteristics. A few final audio notifications can therefore arrive
+    /// just after the STOP control notification even though they were produced
+    /// before the microphone closed.
+    static let lateAudioGracePeriod: TimeInterval = 0.15
+
+    static func acceptsLateAudio(lastStopAt: Date?, now: Date = Date()) -> Bool {
+        guard let lastStopAt else { return false }
+        let elapsed = now.timeIntervalSince(lastStopAt)
+        return elapsed >= 0 && elapsed <= lateAudioGracePeriod
+    }
+
     static let serviceUUID = "AB5E0001-5A21-4F05-BC7D-AF01F617B664"
     static let transmitUUID = "AB5E0002-5A21-4F05-BC7D-AF01F617B664"
     static let audioUUID = "AB5E0003-5A21-4F05-BC7D-AF01F617B664"

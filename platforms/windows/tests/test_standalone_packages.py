@@ -37,7 +37,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.13"', text)
+        self.assertIn('[string] $Version = "0.1.14"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -220,6 +220,9 @@ class StandalonePackageTests(unittest.TestCase):
             audio_setup,
         )
         self.assertIn("VB-CABLE download hash mismatch", audio_setup)
+        self.assertIn("Local\\MiVibeRemoteAudioSetup", audio_setup)
+        self.assertIn("NewGuid().ToString('N')", audio_setup)
+        self.assertIn("等待文件解除占用超时", audio_setup)
         fetch_script = (
             ROOT / "scripts" / "fetch-third-party.ps1"
         ).read_text(encoding="utf-8-sig")

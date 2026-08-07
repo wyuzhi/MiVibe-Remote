@@ -47,6 +47,18 @@ check(
         !ATVVProtocol.supportsAudio(sampleRate: 8_000),
     "ATVV audio rate gate"
 )
+let atvvStoppedAt = Date(timeIntervalSinceReferenceDate: 1_000)
+check(
+    ATVVProtocol.acceptsLateAudio(
+        lastStopAt: atvvStoppedAt,
+        now: atvvStoppedAt.addingTimeInterval(0.10)
+    ) &&
+        !ATVVProtocol.acceptsLateAudio(
+            lastStopAt: atvvStoppedAt,
+            now: atvvStoppedAt.addingTimeInterval(0.30)
+        ),
+    "ATVV late tail audio grace window"
+)
 
 check(
     RC003NameMatcher.matches("MI RC") &&

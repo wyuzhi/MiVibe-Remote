@@ -20,16 +20,43 @@ $RebootFlag = Join-Path $StateRoot "reboot-required.flag"
 $RunOnceKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
 $RunOnceName = "MiVibeRemoteAudioFinish"
 $ReportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "MiVibeRemote-audio-check.txt"
+$SetupMutex = New-Object Threading.Mutex($false, "Local\MiVibeRemoteAudioSetup")
+$OwnsSetupMutex = $false
+
+try {
+  $OwnsSetupMutex = $SetupMutex.WaitOne(0)
+} catch [Threading.AbandonedMutexException] {
+  $OwnsSetupMutex = $true
+}
+
+if (-not $OwnsSetupMutex) {
+  $message = "语音驱动安装程序已在运行，请完成现有窗口后再试"
+  if (-not $NonInteractive) {
+    try { (New-Object -ComObject WScript.Shell).Popup($message,0,$ProductName,64)|Out-Null } catch {}
+  }
+  Write-Output $message
+  $SetupMutex.Dispose()
+  exit 0
+}
 
 function Get-Sha256([string] $Path) {
-  $stream = [IO.File]::OpenRead($Path)
-  $algorithm = [Security.Cryptography.SHA256]::Create()
-  try {
-    return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
-  } finally {
-    $algorithm.Dispose()
-    $stream.Dispose()
+  $lastError = $null
+  for ($attempt = 1; $attempt -le 40; $attempt++) {
+    $stream = $null
+    $algorithm = $null
+    try {
+      $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+      $algorithm = [Security.Cryptography.SHA256]::Create()
+      return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+    } catch [IO.IOException] {
+      $lastError = $_.Exception
+      if ($attempt -lt 40) { Start-Sleep -Milliseconds 250 }
+    } finally {
+      if ($algorithm) { $algorithm.Dispose() }
+      if ($stream) { $stream.Dispose() }
+    }
   }
+  throw "等待文件解除占用超时：$Path；$($lastError.Message)"
 }
 
 function Get-VBCableEndpoint([string] $Flow, [string] $Prefix, [string] $Pattern) {
@@ -116,8 +143,10 @@ function Resolve-DriverPackage {
     Remove-Item -LiteralPath $DownloadedDriverZip -Force
   }
 
-  $temporary = "$DownloadedDriverZip.download"
-  Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+  # Use a process-unique temporary file.  A shared `.download` name allowed a
+  # second repair click (or an older helper process) to hash the first process'
+  # still-open download.
+  $temporary = "$DownloadedDriverZip.$PID.$([Guid]::NewGuid().ToString('N')).download"
   try {
     $curl = Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue |
       Select-Object -First 1
@@ -286,4 +315,6 @@ if (-not $NonInteractive -and ($Mode -eq "Repair" -or $exitCode -ne 0)) {
   try { (New-Object -ComObject WScript.Shell).Popup($result,0,$ProductName,64)|Out-Null } catch {}
 }
 Write-Output $result
+$SetupMutex.ReleaseMutex()
+$SetupMutex.Dispose()
 exit $exitCode
