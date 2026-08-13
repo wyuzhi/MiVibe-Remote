@@ -20,3 +20,5 @@ build/
 *.raw
 config.json
 keys_config.json
+mivibe-update-private*
+.update-signing/

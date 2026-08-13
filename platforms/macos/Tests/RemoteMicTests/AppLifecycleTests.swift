@@ -22,6 +22,11 @@ struct AppLifecycleTests {
         )
 
         #expect(appSource.contains("configureMainMenu()"))
+        #expect(appSource.contains("appUpdater = AppUpdater()"))
+        #expect(appSource.contains("appUpdater?.start()"))
+        #expect(appSource.contains("menu.addItem(updateMenuItem())"))
+        #expect(appSource.contains("applicationMenu.addItem(updateMenuItem())"))
+        #expect(appSource.contains("检查更新…（自动更新未配置）"))
         #expect(appSource.contains("title: \"退出 MiVibe Remote\""))
         #expect(appSource.contains("keyEquivalent: \"q\""))
         #expect(appSource.contains("application.setActivationPolicy(.regular)"))

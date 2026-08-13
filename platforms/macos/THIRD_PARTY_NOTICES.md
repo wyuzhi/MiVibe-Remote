@@ -36,6 +36,15 @@ BlackHole remains an optional loopback-device choice. This fork includes `script
 
 The Doubao compatibility design is informed by MiRemoteVoice: a side-by-side BlackHole-derived device reports its actual audio Device as USB transport so Doubao can enumerate it. The built-in-microphone passthrough and remote-wins source selection also adapt the MIT-licensed `AudioPipe.swift` design, while this project keeps its existing AVAudioEngine output and lifecycle integration. This fork reimplements the driver idea as a pinned, source-built BlackHole patch instead of reusing MiRemoteVoice's version-specific binary replacement script.
 
+## Sparkle
+
+- Project: `sparkle-project/Sparkle`
+- Source: <https://github.com/sparkle-project/Sparkle>
+- Pinned version: `2.9.4` / `b6496a74a087257ef5e6da1c5b29a447a60f5bd7`
+- License: MIT
+
+The macOS application embeds Sparkle for signed, user-confirmed application updates. Sparkle updates only the application bundle and does not manage the MiRemoteV audio driver. Its Ed25519 private signing key is not bundled or stored in this repository.
+
 ## Product imagery
 
 No product photo, screenshot, or proprietary App Logo from either upstream repository is bundled. The current MiVibe App icon and the remote image used by the settings interface were supplied by the MiVibe Remote project maintainer for this project. Third-party product shapes, names, and marks depicted in those assets remain the property of their respective owners; their appearance does not imply endorsement.

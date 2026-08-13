@@ -19,7 +19,8 @@
 
 | 模块 | 主要职责 |
 | --- | --- |
-| `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、左键设置窗口、右键菜单、关于与版本菜单项、Sparkle 手动更新入口 |
+| `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、主应用菜单、右键菜单、关于与版本菜单项、Sparkle 更新入口 |
+| `AppUpdater.swift` | 安全校验更新配置、持有 Sparkle updater controller、定时检查和用户主动检查 |
 | `SettingsView.swift` | macOS 26 Liquid Glass 设置界面、状态展示、音频选择、按键映射和权限入口 |
 | `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex / WorkBuddy / 微信语音和 UI 状态的协调层 |
 | `XiaomiBluetoothBridge.swift` | CoreBluetooth 扫描、连接、能力协商、语音会话和自动重连 |
@@ -166,7 +167,26 @@ DMG 根目录严格只有四项：
 
 `verify-dmg.sh` 校验 SHA-256、HFS+ 镜像、根目录清单、应用 bundle 内容、PKG payload、版本号、`arm64` 架构、macOS 26 最低版本、有效代码签名和本地路径泄漏。
 
-Sparkle `2.9.4` 通过 SwiftPM 嵌入应用。更新源和 EdDSA 公钥位于应用的 `Info.plist`；私钥仅存储在发布者本机的受限存储中，不进入项目或 Release。`SUEnableAutomaticChecks=false` 禁止启动时和定时检查，只有用户选择菜单中的“检查更新…”时才会访问更新源。Sparkle 仅更新应用 bundle，不安装或替换兼容麦克风驱动。
+Sparkle `2.9.4` 作为精确版本 SwiftPM 依赖嵌入应用。构建脚本只接受
+`MIVIBE_APPCAST_URL` 和 `MIVIBE_UPDATE_ED25519_PUBLIC_KEY`，并在两者同时有效时把更新源与
+Ed25519 公钥注入最终应用的 `Info.plist`。源码不含生产 feed、公钥占位符、访问令牌或私钥；
+私钥只存储在发布环境的受限安全存储中，不进入项目、应用或 Release。
+
+发布版默认每 86400 秒定期检查一次，也提供应用菜单和菜单栏菜单的“检查更新…”入口。
+`SUAllowsAutomaticUpdates=false` 与 `SUAutomaticallyUpdate=false` 禁止后台静默下载和安装，
+新版本必须由用户确认。构建未注入完整配置时不会启动 Sparkle updater，也不会访问网络，菜单明确
+显示“检查更新…（自动更新未配置）”。Sparkle 只更新应用 bundle，不安装或替换兼容麦克风驱动。
+
+SwiftPM CLI 不会替手工组装的 `.app` 完成 Embed & Sign，因此 `build-app.sh` 明确复制
+`Sparkle.framework` 到 `Contents/Frameworks`，为主程序添加
+`@executable_path/../Frameworks` rpath，并依次签名 Installer XPC、Downloader XPC、
+Autoupdate、Updater、framework 和主应用。按 Sparkle 2.9.4 的官方手工签名要求，仅
+Downloader XPC 使用 `--preserve-metadata=entitlements`；其他组件不得继承上游签名的
+entitlements，尤其不能让 Autoupdate 保留 Sparkle 的 application identifier。验证脚本检查
+这些嵌套组件、Autoupdate entitlement、动态链接路径与严格深度签名。
+
+正式对外发布还必须由发布环境提供 Developer ID Application 身份，对最终应用和 DMG 完成
+Apple 公证与 stapling；在这条外部证书流程就绪前，现有 ad-hoc 构建是明确的生产发布阻塞项。
 
 ## 许可与来源
 

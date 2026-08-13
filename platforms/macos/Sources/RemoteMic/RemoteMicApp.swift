@@ -39,11 +39,13 @@ enum RemoteMicApp {
 }
 
 @MainActor
-private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
+    NSMenuItemValidation {
     private let model = BridgeAppModel()
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
     private var settingsWindowController: NSWindowController?
+    private var appUpdater: AppUpdater?
     private var subscriptions = Set<AnyCancellable>()
     private var terminationSignalSources: [DispatchSourceSignal] = []
     private let connectionItem = NSMenuItem(title: "正在初始化蓝牙", action: nil, keyEquivalent: "")
@@ -52,9 +54,11 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installTerminationSignalHandlers()
+        appUpdater = AppUpdater()
         configureMainMenu()
         configureStatusItem()
         observeModel()
+        appUpdater?.start()
         model.startIfNeeded()
         refreshMenuStatus()
         showSettings()
@@ -97,6 +101,15 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         let mainMenu = NSMenu()
         let applicationItem = NSMenuItem()
         let applicationMenu = NSMenu()
+        let aboutItem = NSMenuItem(
+            title: "关于 MiVibe Remote",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        applicationMenu.addItem(aboutItem)
+        applicationMenu.addItem(updateMenuItem())
+        applicationMenu.addItem(.separator())
         let quitItem = NSMenuItem(
             title: "退出 MiVibe Remote",
             action: #selector(quit),
@@ -138,6 +151,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         menu.addItem(menuItem("打开设置…", action: #selector(showSettings)))
         menu.addItem(menuItem("显示日志", action: #selector(showLog)))
         menu.addItem(.separator())
+        menu.addItem(updateMenuItem())
         menu.addItem(menuItem("关于 MiVibe Remote", action: #selector(showAbout)))
         menu.addItem(versionMenuItem())
         menu.addItem(.separator())
@@ -150,6 +164,27 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         return item
+    }
+
+    private func updateMenuItem() -> NSMenuItem {
+        guard appUpdater?.isConfigured == true else {
+            let item = NSMenuItem(
+                title: "检查更新…（自动更新未配置）",
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            return item
+        }
+
+        return menuItem("检查更新…", action: #selector(checkForUpdates))
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(checkForUpdates) {
+            return appUpdater?.canCheckForUpdates == true
+        }
+        return true
     }
 
     private func versionMenuItem() -> NSMenuItem {
@@ -254,6 +289,10 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    @objc private func checkForUpdates() {
+        appUpdater?.checkForUpdates(nil)
     }
 
     @objc private func quit() {

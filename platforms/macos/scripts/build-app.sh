@@ -18,18 +18,74 @@ cd "$ROOT"
 
 xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx26.0
 BIN_PATH="$(xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx26.0 --show-bin-path)/$APP_NAME"
+SPARKLE_FRAMEWORK="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+
+if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
+  print -u2 "Sparkle.framework not found after SwiftPM build: $SPARKLE_FRAMEWORK"
+  exit 1
+fi
 
 case "$APP_DIR" in
   "$ROOT/dist/"*.app) ;;
   *) print -u2 "refusing to clean unexpected app path: $APP_DIR"; exit 1 ;;
 esac
 rm -rf -- "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+mkdir -p \
+  "$APP_DIR/Contents/MacOS" \
+  "$APP_DIR/Contents/Resources" \
+  "$APP_DIR/Contents/Frameworks"
 ditto --norsrc --noextattr --noqtn --noacl \
   "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 strip -S -x "$APP_DIR/Contents/MacOS/$APP_NAME"
+install_name_tool \
+  -add_rpath "@executable_path/../Frameworks" \
+  "$APP_DIR/Contents/MacOS/$APP_NAME"
 ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+if [[ -n "${MIVIBE_APPCAST_URL:-}" || -n "${MIVIBE_UPDATE_ED25519_PUBLIC_KEY:-}" ]]; then
+  if [[ -z "${MIVIBE_APPCAST_URL:-}" || -z "${MIVIBE_UPDATE_ED25519_PUBLIC_KEY:-}" ]]; then
+    print -u2 "MIVIBE_APPCAST_URL and MIVIBE_UPDATE_ED25519_PUBLIC_KEY must be set together"
+    exit 1
+  fi
+  if [[ "$MIVIBE_APPCAST_URL" != https://* ]]; then
+    print -u2 "MIVIBE_APPCAST_URL must use HTTPS"
+    exit 1
+  fi
+  if ! python3 - "$MIVIBE_APPCAST_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+parsed = urlsplit(sys.argv[1])
+if (
+    not parsed.netloc
+    or parsed.username
+    or parsed.password
+    or parsed.query
+    or parsed.fragment
+):
+    raise SystemExit(1)
+PY
+  then
+    print -u2 "MIVIBE_APPCAST_URL must not contain credentials, a query string, or a fragment"
+    exit 1
+  fi
+  if ! DECODED_KEY_LENGTH="$(
+    print -rn -- "$MIVIBE_UPDATE_ED25519_PUBLIC_KEY" \
+      | base64 --decode 2>/dev/null \
+      | wc -c \
+      | tr -d '[:space:]'
+  )" || [[ "$DECODED_KEY_LENGTH" != "32" ]]; then
+    print -u2 "MIVIBE_UPDATE_ED25519_PUBLIC_KEY must be a 32-byte base64 Ed25519 public key"
+    exit 1
+  fi
+  plutil -replace SUFeedURL -string "$MIVIBE_APPCAST_URL" \
+    "$APP_DIR/Contents/Info.plist"
+  plutil -replace SUPublicEDKey -string "$MIVIBE_UPDATE_ED25519_PUBLIC_KEY" \
+    "$APP_DIR/Contents/Info.plist"
+fi
+ditto --norsrc --noextattr --noqtn --noacl \
+  "$SPARKLE_FRAMEWORK" \
+  "$APP_DIR/Contents/Frameworks/Sparkle.framework"
 ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/LICENSE.md" "$APP_DIR/Contents/Resources/LICENSE.md"
 ditto --norsrc --noextattr --noqtn --noacl \
@@ -52,22 +108,67 @@ done
 ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/Resources/虚拟麦克风说明.md" \
   "$APP_DIR/Contents/Resources/虚拟麦克风说明.md"
-if [[ "$SIGNING_IDENTITY" != "-" ]]; then
-  codesign --force --deep --timestamp=none --sign "$SIGNING_IDENTITY" "$APP_DIR"
+EMBEDDED_SPARKLE="$APP_DIR/Contents/Frameworks/Sparkle.framework"
+SPARKLE_VERSION_DIR="$EMBEDDED_SPARKLE/Versions/B"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  SIGN_TIMESTAMP=(--timestamp=none)
+else
+  SIGN_TIMESTAMP=(--timestamp)
 fi
+
+sign_sparkle_component() {
+  local component="$1"
+  shift
+  codesign \
+    --force \
+    --options runtime \
+    "$@" \
+    "${SIGN_TIMESTAMP[@]}" \
+    --sign "$SIGNING_IDENTITY" \
+    "$component"
+}
+
+# Sparkle 2.9.4's manual signing recipe preserves entitlements only on
+# Downloader.xpc. In particular, do not carry Sparkle's upstream Autoupdate
+# application identifier into a Developer ID signed release.
+sign_sparkle_component \
+  "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc"
+sign_sparkle_component \
+  "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc" \
+  --preserve-metadata=entitlements
+sign_sparkle_component \
+  "$SPARKLE_VERSION_DIR/Autoupdate"
+sign_sparkle_component \
+  "$SPARKLE_VERSION_DIR/Updater.app"
+sign_sparkle_component \
+  "$EMBEDDED_SPARKLE"
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   BUNDLE_IDENTIFIER="$(plutil -extract CFBundleIdentifier raw -o - "$APP_DIR/Contents/Info.plist")"
   codesign \
     --force \
-    --deep \
+    --options runtime \
     --timestamp=none \
     --sign - \
-    "$APP_DIR"
+    "$APP_DIR/Contents/MacOS/$APP_NAME"
   codesign \
     --force \
+    --options runtime \
     --timestamp=none \
     --sign - \
     --requirements "=designated => identifier \"$BUNDLE_IDENTIFIER\"" \
+    "$APP_DIR"
+else
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --sign "$SIGNING_IDENTITY" \
+    "$APP_DIR/Contents/MacOS/$APP_NAME"
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --sign "$SIGNING_IDENTITY" \
     "$APP_DIR"
 fi
 codesign --verify --deep --strict "$APP_DIR"

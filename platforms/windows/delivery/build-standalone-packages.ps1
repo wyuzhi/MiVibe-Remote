@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [string] $Version = "0.1.15",
+  [string] $Version = "0.1.16",
   [string[]] $Product = @("xiaomi"),
   [switch] $AllowUnsignedCandidate,
   [string] $PythonExecutable = "",
@@ -134,6 +134,48 @@ if ($LASTEXITCODE -ne 0) { throw "Automated tests failed: $LASTEXITCODE" }
 Reset-SafeDirectory $Stage (Join-Path $Project "build")
 Reset-SafeDirectory $Output (Join-Path $PSScriptRoot "out")
 
+$UpdateAppcastUrl = [string] $env:MIVIBE_APPCAST_URL
+$UpdatePublicKey = [string] $env:MIVIBE_UPDATE_ED25519_PUBLIC_KEY
+if ([string]::IsNullOrWhiteSpace($UpdateAppcastUrl) -xor
+    [string]::IsNullOrWhiteSpace($UpdatePublicKey)) {
+  throw "MIVIBE_APPCAST_URL and MIVIBE_UPDATE_ED25519_PUBLIC_KEY must be provided together"
+}
+if (-not [string]::IsNullOrWhiteSpace($UpdateAppcastUrl)) {
+  $parsedUpdateUri = $null
+  if (-not [Uri]::TryCreate($UpdateAppcastUrl, [UriKind]::Absolute, [ref] $parsedUpdateUri) -or
+      $parsedUpdateUri.Scheme -ne 'https') {
+    throw "MIVIBE_APPCAST_URL must be an absolute HTTPS URL"
+  }
+  if ($parsedUpdateUri.UserInfo -or $parsedUpdateUri.Query -or $parsedUpdateUri.Fragment) {
+    throw "MIVIBE_APPCAST_URL must not contain credentials, a query string, or a fragment"
+  }
+  try {
+    $decodedUpdateKey = [Convert]::FromBase64String($UpdatePublicKey)
+  }
+  catch {
+    throw "MIVIBE_UPDATE_ED25519_PUBLIC_KEY must be valid base64"
+  }
+  if ($decodedUpdateKey.Length -ne 32) {
+    throw "MIVIBE_UPDATE_ED25519_PUBLIC_KEY must decode to a 32-byte Ed25519 public key"
+  }
+}
+$UpdateConfigDirectory = Join-Path $Stage "generated"
+$null = New-Item -ItemType Directory -Force -Path $UpdateConfigDirectory
+$UpdateConfigPath = Join-Path $UpdateConfigDirectory "update_config.json"
+$UpdateConfig = [ordered]@{
+  appcast_url = $UpdateAppcastUrl.Trim()
+  ed25519_public_key = $UpdatePublicKey.Trim()
+  automatic_check_interval = 86400
+} | ConvertTo-Json
+[IO.File]::WriteAllText($UpdateConfigPath, $UpdateConfig, [Text.UTF8Encoding]::new($false))
+$env:MIVIBE_UPDATE_CONFIG_PATH = $UpdateConfigPath
+if ([string]::IsNullOrWhiteSpace($UpdateAppcastUrl)) {
+  Write-Warning "Building with online updates disabled: update feed and public key were not provided"
+}
+else {
+  Write-Host "Online update configuration embedded: $UpdateAppcastUrl"
+}
+
 foreach ($productDefinition in $selectedProducts) {
   $productWork = Join-Path $Work $productDefinition.Id
   $null = New-Item -ItemType Directory -Force -Path $productWork
@@ -173,6 +215,24 @@ foreach ($productDefinition in $selectedProducts) {
       if ($archiveListing -notmatch [regex]::Escape($requiredWinRtModule)) {
         throw "Xiaomi package is missing required WinRT module: $requiredWinRtModule"
       }
+    }
+    $packagedWinSparkle = @(Get-ChildItem -LiteralPath $folder -Recurse -File -Filter "WinSparkle.dll")
+    if ($packagedWinSparkle.Count -ne 1) {
+      throw "Xiaomi package must contain exactly one WinSparkle.dll"
+    }
+    $packagedWinSparkleHash = Get-SHA256 $packagedWinSparkle[0].FullName
+    if ($packagedWinSparkleHash -ne '9b43b1c16ee39fb9a91b5bd75138767898779510e0836be2919250607cdbe8ab') {
+      throw "Xiaomi package contains an unexpected WinSparkle.dll"
+    }
+    $packagedUpdateConfigs = @(Get-ChildItem -LiteralPath $folder -Recurse -File -Filter "update_config.json")
+    if ($packagedUpdateConfigs.Count -ne 1) {
+      throw "Xiaomi package must contain exactly one generated update_config.json"
+    }
+    $packagedUpdateConfig = Get-Content -LiteralPath $packagedUpdateConfigs[0].FullName -Raw -Encoding UTF8 |
+      ConvertFrom-Json
+    if ($packagedUpdateConfig.appcast_url -ne $UpdateAppcastUrl.Trim() -or
+        $packagedUpdateConfig.ed25519_public_key -ne $UpdatePublicKey.Trim()) {
+      throw "Xiaomi package update configuration does not match this build"
     }
   }
   if ($productDefinition.Id -eq 't1' -and $archiveListing -match 'bridges\.(xiaomi|hanvon|audio\.audio_router)') {

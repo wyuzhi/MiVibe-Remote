@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.9</string>
+	<string>0.1.10</string>
 	<key>CFBundleVersion</key>
-	<string>10</string>
+	<string>11</string>
     <key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
     <key>LSUIElement</key>
@@ -34,5 +34,13 @@
     <string>GPL-3.0-only</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

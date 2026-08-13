@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
@@ -8,11 +9,20 @@ source = Path(SPECPATH).resolve()
 assets = source / "bridges" / "xiaomi" / "assets"
 frida_gadget = assets / "frida-gadget-17.15.3-windows-x86_64.dll.xz"
 app_icon = assets / "MiVibeRemote.ico"
+vendor = source.parent / "delivery" / "vendor" / "winsparkle"
+winsparkle_dll = vendor / "WinSparkle.dll"
+update_config = Path(os.environ.get("MIVIBE_UPDATE_CONFIG_PATH", ""))
 
 if not frida_gadget.is_file():
     raise SystemExit(
         "Missing verified Frida Gadget asset. Run scripts/fetch-third-party.ps1 first."
     )
+if not winsparkle_dll.is_file():
+    raise SystemExit(
+        "Missing verified WinSparkle asset. Run scripts/fetch-third-party.ps1 first."
+    )
+if not update_config.is_file():
+    raise SystemExit("Missing generated online update configuration.")
 
 winrt_datas, winrt_binaries, winrt_hiddenimports = collect_all(
     "winrt", include_py_files=False
@@ -20,13 +30,14 @@ winrt_datas, winrt_binaries, winrt_hiddenimports = collect_all(
 
 datas = [
     (str(frida_gadget), "bridges/xiaomi/assets"),
+    (str(update_config), "update"),
     *winrt_datas,
 ]
 
 a = Analysis(
     [str(source / "standalone" / "xiaomi_main.py")],
     pathex=[str(source)],
-    binaries=[*winrt_binaries],
+    binaries=[(str(winsparkle_dll), "."), *winrt_binaries],
     datas=datas,
     hiddenimports=[
         "pystray._win32",
