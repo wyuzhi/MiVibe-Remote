@@ -71,6 +71,9 @@ from bridges.audio_client import PCM_PORT, ROUTER_HOST
 
 _MUTEX_HANDLE = None
 _RUNTIME_LOG = None
+XIAOMI_CONTROL_PORT = int(
+    os.environ.get("REMOTE_BRIDGE_XIAOMI_CONTROL_PORT", "28690")
+)
 TV_EVENT_IDS = frozenset(BUTTON_ALIASES["tv"])
 HID_SERVICE_UUID = "00001812-0000-1000-8000-00805f9b34fb"
 HID_REPORT_UUID = "00002a4d-0000-1000-8000-00805f9b34fb"
@@ -232,7 +235,7 @@ def acquire_single_instance() -> bool:
 
 
 class XiaomiTvActionGate:
-    """Ignore TV-key actions until the ATVV bridge has been ready for a moment."""
+    """Ignore a stale TV-key edge briefly while mapping hooks attach."""
 
     def __init__(self, ready_delay: float = 2.0):
         self.ready_delay = max(0.0, float(ready_delay))
@@ -683,7 +686,11 @@ class XiaomiSpecialKeyHook:
                 print(f"XIAOMI HID DIRECT usage=0x{usage:04X} ignored", flush=True)
                 continue
             self._mark_direct_signal(name)
-            if self.action_gate.is_ready():
+            # Button mapping must not depend on the ATVV voice connection.
+            # Only TV keeps the short startup guard because that key can emit
+            # one stale report while the HID tap is attaching.
+            action_ready = name != "tv" or self.action_gate.is_ready()
+            if action_ready:
                 triggered = self._send_button_action(name)
                 if triggered and usage == 0xF1:
                     self._start_back_repeat()
@@ -696,7 +703,8 @@ class XiaomiSpecialKeyHook:
                 )
             else:
                 print(
-                    f"XIAOMI HID DIRECT key={name} usage=0x{usage:04X} blocked_not_ready",
+                    f"XIAOMI HID DIRECT key={name} usage=0x{usage:04X} "
+                    "blocked_tv_startup_guard",
                     flush=True,
                 )
         for usage in sorted(released):
@@ -997,7 +1005,9 @@ class XiaomiGattHidSession:
 
 
 def start_raw_mapping_thread(
-    enabled: bool, action_guard: XiaomiTvActionGate
+    enabled: bool,
+    action_guard: XiaomiTvActionGate,
+    preset_cycle_handler=None,
 ) -> threading.Thread | None:
     """Run device-filtered Raw Input mapping in this process.
 
@@ -1031,6 +1041,9 @@ def start_raw_mapping_thread(
                     "0",
                 ],
                 action_guard=action_guard,
+                action_handlers={"preset_cycle": preset_cycle_handler}
+                if preset_cycle_handler is not None
+                else None,
             )
         except Exception as exc:
             print(f"XIAOMI KEY MAPPING ERROR {type(exc).__name__}: {exc}", flush=True)
@@ -1273,7 +1286,6 @@ async def bridge_once(
     action_guard: XiaomiTvActionGate,
     special_keys: XiaomiSpecialKeyHook,
 ) -> None:
-    action_guard.mark_connecting()
     print(f"CONNECTING remote={address}", flush=True)
     device = await BluetoothLEDevice.from_bluetooth_address_async(address_to_int(address))
     if device is None:
@@ -1329,7 +1341,6 @@ async def bridge_once(
             f"rate={output.sample_rate}; press and hold the remote microphone button",
             flush=True,
         )
-        action_guard.mark_ready()
         await write_command(tx, GET_CAPS_V10, "GET_CAPS")
 
         decoder = AdpcmDecoder()
@@ -1469,7 +1480,6 @@ async def bridge_once(
                         flush=True,
                     )
     finally:
-        action_guard.mark_connecting()
         special_keys.reset_direct_hid_state()
         voice_shortcut.release()
         if mic_opened and service is not None:
@@ -1627,7 +1637,10 @@ def main(argv: list[str] | None = None) -> int:
         special_keys.button_bindings = keys_config.get("button_bindings", {})
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-                client.sendto(b"RESTART:xiaomi", ("127.0.0.1", 28690))
+                client.sendto(
+                    b"RESTART:xiaomi",
+                    ("127.0.0.1", XIAOMI_CONTROL_PORT),
+                )
         except OSError:
             pass
         return preset
@@ -1658,7 +1671,11 @@ def main(argv: list[str] | None = None) -> int:
             hid_tap_fallback_required,
         ),
         action_guard,
+        cycle_runtime_preset,
     )
+    # Arm TV once the key-mapping paths are installed. Voice GATT may connect,
+    # disconnect or be unavailable without disabling any configured button.
+    action_guard.mark_ready()
     try:
         return asyncio.run(run(args, action_guard, special_keys))
     except KeyboardInterrupt:

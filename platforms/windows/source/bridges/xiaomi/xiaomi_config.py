@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 
 
 APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
@@ -16,9 +17,9 @@ APPDATA = Path(os.environ.get("APPDATA", str(Path.home()))) / os.environ.get(
 CONFIG_PATH = APPDATA / "xiaomi.json"
 KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
-APP_VERSION = "0.1.14"
+APP_VERSION = "0.1.15"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
-MAPPING_SCHEMA_VERSION = 1
+MAPPING_SCHEMA_VERSION = 2
 
 CODEX_VOICE_HOTKEY = ("rightalt",)
 CODEX_VOICE_TRIGGER_MODE = "hold"
@@ -158,11 +159,24 @@ BUTTON_ALIASES = {
     "ok": ["kbd:VK_0D:SC_01C:N:down"],
     "back": ["kbd:VK_A6:SC_000:E0:down", "kbd:VK_08:SC_00E:N:down"],
     "home": ["kbd:VK_AC:SC_000:E0:down", "kbd:VK_24:SC_047:E0:down"],
-    "menu": ["kbd:VK_5D:SC_05D:E0:down"],
-    "tv": ["kbd:VK_C0:SC_029:N:down"],
+    "menu": [
+        "kbd:VK_5D:SC_05D:E0:down",
+        "kbd:VK_5D:SC_05D:N:down",
+        "kbd:VK_5D:SC_000:E0:down",
+    ],
+    "tv": [
+        "kbd:VK_C0:SC_029:N:down",
+        "kbd:VK_C0:SC_029:E0:down",
+    ],
     "power": ["kbd:VK_FF:SC_05E:E0:down"],
-    "volume_up": ["kbd:VK_AF:SC_000:E0:down"],
-    "volume_down": ["kbd:VK_AE:SC_000:E0:down"],
+    "volume_up": [
+        "kbd:VK_AF:SC_000:E0:down",
+        "kbd:VK_AF:SC_000:N:down",
+    ],
+    "volume_down": [
+        "kbd:VK_AE:SC_000:E0:down",
+        "kbd:VK_AE:SC_000:N:down",
+    ],
     "mic": [],
 }
 
@@ -293,6 +307,29 @@ def preset_button_bindings(preset: str) -> dict:
     return codex_button_bindings()
 
 
+def saved_preset_button_bindings(keys_config: dict, preset: str) -> dict:
+    """Return an independent saved profile, falling back to its factory preset."""
+
+    profiles = keys_config.get("preset_bindings", {})
+    if isinstance(profiles, dict):
+        saved = profiles.get(preset)
+        if isinstance(saved, dict):
+            return copy.deepcopy(saved)
+    return preset_button_bindings(preset)
+
+
+def save_preset_button_bindings(
+    keys_config: dict, preset: str, bindings: dict
+) -> None:
+    """Persist one preset without replacing mappings saved for other presets."""
+
+    profiles = keys_config.setdefault("preset_bindings", {})
+    if not isinstance(profiles, dict):
+        profiles = {}
+        keys_config["preset_bindings"] = profiles
+    profiles[preset] = copy.deepcopy(bindings)
+
+
 def next_preset(preset: str) -> str:
     try:
         index = PRESET_ORDER.index(preset)
@@ -309,7 +346,12 @@ def apply_preset_configuration(
 ) -> str:
     if preset not in PRESET_ORDER:
         preset = PRESET_ORDER[0]
+    current_preset = str(config.get("active_preset", PRESET_ORDER[0]))
     current_bindings = keys_config.get("button_bindings", {})
+    if current_preset in PRESET_ORDER and isinstance(current_bindings, dict):
+        save_preset_button_bindings(
+            keys_config, current_preset, current_bindings
+        )
     cycle_bindings = {}
     if preserve_cycle_actions and isinstance(current_bindings, dict):
         for button, actions in current_bindings.items():
@@ -320,7 +362,7 @@ def apply_preset_configuration(
             ):
                 cycle_bindings[button] = copy.deepcopy(actions)
 
-    bindings = preset_button_bindings(preset)
+    bindings = saved_preset_button_bindings(keys_config, preset)
     bindings.update(cycle_bindings)
     voice_profiles = {
         "codex": (CODEX_VOICE_HOTKEY, CODEX_VOICE_TRIGGER_MODE),
@@ -332,7 +374,8 @@ def apply_preset_configuration(
     config["voice_shortcut_enabled"] = True
     config["voice_hotkey"] = "+".join(voice_hotkey)
     config["voice_trigger_mode"] = voice_trigger_mode
-    keys_config["button_bindings"] = bindings
+    keys_config["button_bindings"] = copy.deepcopy(bindings)
+    save_preset_button_bindings(keys_config, preset, bindings)
     return preset
 
 
@@ -382,6 +425,9 @@ def default_keys_config() -> dict:
         "handle_mouse_move": False,
         "button_aliases": copy.deepcopy(BUTTON_ALIASES),
         "button_bindings": codex_button_bindings(),
+        "preset_bindings": {
+            preset: preset_button_bindings(preset) for preset in PRESET_ORDER
+        },
         "bindings": {},
     }
 
@@ -392,7 +438,18 @@ def _read_json(path: Path) -> dict:
 
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    temporary = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        temporary.write_text(payload, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def normalize_hotkey_token(raw: str) -> str:
@@ -534,11 +591,41 @@ def load_keys_config(path: Path = KEYS_CONFIG_PATH) -> dict:
     config["listen_mouse"] = False
     aliases = config.setdefault("button_aliases", {})
     for key, values in BUTTON_ALIASES.items():
-        aliases.setdefault(key, copy.deepcopy(values))
+        existing = aliases.get(key, [])
+        if isinstance(existing, str):
+            existing = [existing]
+        elif not isinstance(existing, list):
+            existing = []
+        aliases[key] = existing + [
+            value for value in values if value not in existing
+        ]
     bindings = config.setdefault("button_bindings", {})
-    if loaded_schema < MAPPING_SCHEMA_VERSION:
+    if loaded_schema < 1:
         for button_id, actions in DEFAULT_BUTTON_BINDINGS.items():
             bindings.setdefault(button_id, copy.deepcopy(actions))
+    profiles = config.get("preset_bindings", {})
+    if not isinstance(profiles, dict):
+        profiles = {}
+    if loaded_schema < 2:
+        # Schema 1 had only one global mapping. Treat it as the saved mapping
+        # for the active preset; other profiles start from their own defaults.
+        active_preset = "codex"
+        try:
+            sibling_config = load_config(path.with_name(CONFIG_PATH.name))
+            configured = str(sibling_config.get("active_preset", "codex"))
+            if configured in PRESET_ORDER:
+                active_preset = configured
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        profiles = {
+            preset: preset_button_bindings(preset) for preset in PRESET_ORDER
+        }
+        profiles[active_preset] = copy.deepcopy(bindings)
+    else:
+        for preset in PRESET_ORDER:
+            if not isinstance(profiles.get(preset), dict):
+                profiles[preset] = preset_button_bindings(preset)
+    config["preset_bindings"] = profiles
     back_actions = bindings.get("back", [])
     if isinstance(back_actions, dict):
         back_actions = [back_actions]

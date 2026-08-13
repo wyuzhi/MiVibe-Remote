@@ -2,11 +2,15 @@ name: Build MiVibe Remote
 
 on:
   push:
+    branches:
+      - main
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   macos:
@@ -30,6 +34,7 @@ jobs:
           ./scripts/build-dmg.sh
           ./scripts/verify-dmg.sh
       - name: Upload macOS candidate
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MiVibe-Remote-macOS
@@ -37,6 +42,15 @@ jobs:
             platforms/macos/dist/MiVibe-Remote-*.dmg
             platforms/macos/dist/MiVibe-Remote-*.dmg.sha256
           if-no-files-found: error
+      - name: Upload macOS release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload "$GITHUB_REF_NAME"
+          dist/MiVibe-Remote-*.dmg
+          dist/MiVibe-Remote-*.dmg.sha256
+          --clobber
 
   windows:
     name: Windows app and installer
@@ -72,10 +86,11 @@ jobs:
         shell: pwsh
         run: >
           .\delivery\build-standalone-packages.ps1
-          -Version 0.1.14
+          -Version 0.1.15
           -Product xiaomi
           -AllowUnsignedCandidate
       - name: Upload Windows candidate
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MiVibe-Remote-Windows
@@ -83,3 +98,13 @@ jobs:
             platforms/windows/delivery/out/standalone/MiVibeRemoteSetup-*.exe
             platforms/windows/delivery/out/standalone/MiVibeRemoteSetup-*.exe.sha256
           if-no-files-found: error
+      - name: Upload Windows release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload $env:GITHUB_REF_NAME
+          delivery/out/standalone/MiVibeRemoteSetup-*.exe
+          delivery/out/standalone/MiVibeRemoteSetup-*.exe.sha256
+          --clobber

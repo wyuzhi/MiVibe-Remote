@@ -653,6 +653,7 @@ class T1Bridge:
         dry_run: bool,
         verbose: bool,
         action_guard=None,
+        action_handlers: dict | None = None,
         control_port: int = DEFAULT_T1_CONTROL_PORT,
     ):
         self.config_path = config_path
@@ -662,6 +663,9 @@ class T1Bridge:
         self.dry_run = dry_run
         self.verbose = verbose
         self.action_guard = action_guard
+        self.action_handlers = (
+            action_handlers if isinstance(action_handlers, dict) else {}
+        )
         self.current_mode = self.config.get("initial_mode", "default")
         self.device_match = [
             str(s).lower() for s in self.config.get("device_match", []) if str(s).strip()
@@ -1367,6 +1371,8 @@ class T1Bridge:
                 return
             self.current_mode = modes[(modes.index(self.current_mode) + 1) % len(modes)] if self.current_mode in modes else modes[0]
             print(f"mode={self.current_mode}", flush=True)
+        elif kind in self.action_handlers:
+            self.action_handlers[kind]()
         elif kind == "log":
             print(str(action.get("message", event.get("event_id"))), flush=True)
         else:
@@ -1498,7 +1504,11 @@ def default_config_path() -> Path:
     return Path(__file__).resolve().parent / "t1" / "config.json"
 
 
-def main(argv: list[str] | None = None, action_guard=None) -> int:
+def main(
+    argv: list[str] | None = None,
+    action_guard=None,
+    action_handlers: dict | None = None,
+) -> int:
     parser = argparse.ArgumentParser(description=f"{RAW_INPUT_NAME} Raw Input bridge")
     parser.add_argument("--config", default=str(default_config_path()), help="mapping JSON path")
     parser.add_argument("--learn", action="store_true", help="log all non-move events for button learning")
@@ -1523,6 +1533,7 @@ def main(argv: list[str] | None = None, action_guard=None) -> int:
         args.dry_run,
         args.verbose,
         action_guard=action_guard,
+        action_handlers=action_handlers,
         control_port=args.control_port,
     )
     bridge.run()
