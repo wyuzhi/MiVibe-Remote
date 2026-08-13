@@ -148,14 +148,39 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         self.assertNotIn("/T", file_command)
 
     def test_embedded_mapping_does_not_claim_t1_control_port(self) -> None:
+        cycle_handler = mock.Mock(return_value="workbuddy")
         with mock.patch.object(t1_core, "main") as mapping_main:
-            thread = xiaomi_core.start_raw_mapping_thread(True, lambda *_args: True)
+            thread = xiaomi_core.start_raw_mapping_thread(
+                True, lambda *_args: True, cycle_handler
+            )
             self.assertIsNotNone(thread)
             thread.join(timeout=1.0)
 
         mapping_main.assert_called_once()
         argv = mapping_main.call_args.args[0]
         self.assertEqual(argv[argv.index("--control-port") + 1], "0")
+        self.assertIs(
+            mapping_main.call_args.kwargs["action_handlers"]["preset_cycle"],
+            cycle_handler,
+        )
+
+    def test_raw_mapping_dispatches_preset_cycle_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bridge = t1_core.T1Bridge.__new__(t1_core.T1Bridge)
+            handler = mock.Mock(return_value="workbuddy")
+            bridge.action_handlers = {"preset_cycle": handler}
+            bridge.current_mode = "default"
+            bridge.last_action_at = {}
+            bridge.action_log = Path(temp_dir) / "actions.jsonl"
+            bridge.verbose = False
+            bridge.dry_run = False
+
+            bridge.run_action(
+                {"event_id": "kbd:VK_C0:SC_029:N:down"},
+                {"type": "preset_cycle"},
+            )
+
+        handler.assert_called_once_with()
 
     def test_missing_gadget_falls_back_to_raw_mapping(self) -> None:
         tap = hid_report_tap.XiaomiHidReportTap(lambda _report_id, _data: None)
@@ -262,6 +287,52 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         hook._start_back_repeat.assert_called_once_with()
         hook._cancel_back_repeat.assert_called_once_with()
         self.assertEqual(hook.direct_active_usages, set())
+
+    def test_special_buttons_do_not_wait_for_voice_connection(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
+            xiaomi_core.XiaomiSpecialKeyHook
+        )
+        hook.direct_state_lock = threading.Lock()
+        hook.direct_active_usages = set()
+        hook.action_gate = mock.Mock()
+        hook.action_gate.is_ready.return_value = False
+        hook._mark_direct_signal = mock.Mock()
+        hook._send_button_action = mock.Mock(return_value=True)
+        hook._start_back_repeat = mock.Mock()
+        hook._cancel_back_repeat = mock.Mock()
+        hook._start_volume_repeat = mock.Mock()
+        hook._cancel_volume_repeat = mock.Mock()
+
+        with mock.patch("builtins.print"):
+            hook.handle_direct_hid_report(1, b"\x80\x00\x00\x00\x00\x00")
+            hook.handle_direct_hid_report(1, b"\x00" * 6)
+            hook.handle_direct_hid_report(1, b"\x65\x00\x00\x00\x00\x00")
+
+        self.assertEqual(
+            hook._send_button_action.call_args_list,
+            [mock.call("volume_up"), mock.call("menu")],
+        )
+        hook._start_volume_repeat.assert_called_once_with(0x80, "volume_up")
+
+    def test_tv_keeps_only_its_short_startup_guard(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
+            xiaomi_core.XiaomiSpecialKeyHook
+        )
+        hook.direct_state_lock = threading.Lock()
+        hook.direct_active_usages = set()
+        hook.action_gate = mock.Mock()
+        hook.action_gate.is_ready.return_value = False
+        hook._mark_direct_signal = mock.Mock()
+        hook._send_button_action = mock.Mock(return_value=True)
+        hook._start_back_repeat = mock.Mock()
+        hook._cancel_back_repeat = mock.Mock()
+        hook._start_volume_repeat = mock.Mock()
+        hook._cancel_volume_repeat = mock.Mock()
+
+        with mock.patch("builtins.print"):
+            hook.handle_direct_hid_report(1, b"\x35\x00\x00\x00\x00\x00")
+
+        hook._send_button_action.assert_not_called()
 
     def test_tv_action_gate_blocks_until_ready_delay_expires(self) -> None:
         event_id = next(iter(xiaomi_core.TV_EVENT_IDS))

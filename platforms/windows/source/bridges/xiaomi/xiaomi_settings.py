@@ -32,6 +32,8 @@ from .xiaomi_config import (
     resolve_hotkey_virtual_keys,
     save_config,
     save_keys_config,
+    save_preset_button_bindings,
+    saved_preset_button_bindings,
     voice_hotkey_from_configs,
     wechat_button_bindings,
     workbuddy_button_bindings,
@@ -579,12 +581,25 @@ class XiaomiSettingsWindow:
         self.hub_port = hub_port
         self.config = load_config()
         self.keys_config = load_keys_config()
-        self.working_bindings = copy.deepcopy(
-            self.keys_config.get("button_bindings", {})
-        )
         self.working_preset = str(self.config.get("active_preset", "codex"))
         if self.working_preset not in {"codex", "workbuddy", "wechat"}:
             self.working_preset = "codex"
+        self.working_profiles = copy.deepcopy(
+            self.keys_config.get("preset_bindings", {})
+        )
+        # The top-level mapping is the live runtime profile and is canonical
+        # for upgrades from versions that did not persist presets separately.
+        live_bindings = self.keys_config.get("button_bindings", {})
+        if isinstance(live_bindings, dict):
+            self.working_profiles[self.working_preset] = copy.deepcopy(
+                live_bindings
+            )
+        self.working_bindings = copy.deepcopy(
+            self.working_profiles.get(self.working_preset)
+            or saved_preset_button_bindings(
+                self.keys_config, self.working_preset
+            )
+        )
         if self.config.get("voice_shortcut_enabled", True) or self.working_bindings.get("mic"):
             try:
                 voice_keys = voice_hotkey_from_configs(self.config, self.keys_config)
@@ -1714,6 +1729,11 @@ class XiaomiSettingsWindow:
             return
         self.working_preset = "codex"
         self.working_bindings = codex_button_bindings()
+        self.working_profiles = {
+            "codex": codex_button_bindings(),
+            "workbuddy": workbuddy_button_bindings(),
+            "wechat": wechat_button_bindings(),
+        }
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1723,10 +1743,7 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def apply_codex_preset(self) -> None:
-        cycle_bindings = self._cycle_bindings()
-        self.working_preset = "codex"
-        self.working_bindings = codex_button_bindings()
-        self.working_bindings.update(cycle_bindings)
+        self._switch_preset("codex")
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1737,10 +1754,7 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def apply_workbuddy_preset(self) -> None:
-        cycle_bindings = self._cycle_bindings()
-        self.working_preset = "workbuddy"
-        self.working_bindings = workbuddy_button_bindings()
-        self.working_bindings.update(cycle_bindings)
+        self._switch_preset("workbuddy")
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1751,10 +1765,7 @@ class XiaomiSettingsWindow:
         self.select_button(self.selected_id)
 
     def apply_wechat_preset(self) -> None:
-        cycle_bindings = self._cycle_bindings()
-        self.working_preset = "wechat"
-        self.working_bindings = wechat_button_bindings()
-        self.working_bindings.update(cycle_bindings)
+        self._switch_preset("wechat")
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
             "按住型" if WECHAT_VOICE_TRIGGER_MODE == "hold" else "开关型"
@@ -1763,6 +1774,22 @@ class XiaomiSettingsWindow:
         self._refresh_preset_styles()
         self.selected_id = "power"
         self.select_button(self.selected_id)
+
+    def _switch_preset(self, preset: str) -> None:
+        cycle_bindings = self._cycle_bindings()
+        self.working_profiles[self.working_preset] = copy.deepcopy(
+            self.working_bindings
+        )
+        self.working_preset = preset
+        defaults = {
+            "codex": codex_button_bindings,
+            "workbuddy": workbuddy_button_bindings,
+            "wechat": wechat_button_bindings,
+        }
+        self.working_bindings = copy.deepcopy(
+            self.working_profiles.get(preset) or defaults[preset]()
+        )
+        self.working_bindings.update(cycle_bindings)
 
     def _cycle_bindings(self) -> dict:
         result = {}
@@ -1808,6 +1835,16 @@ class XiaomiSettingsWindow:
             self.config["raw_mapping_enabled"] = True
 
             self.keys_config["mapping_schema_version"] = MAPPING_SCHEMA_VERSION
+            self.working_profiles[self.working_preset] = copy.deepcopy(
+                self.working_bindings
+            )
+            for preset, bindings in self.working_profiles.items():
+                if preset in {"codex", "workbuddy", "wechat"} and isinstance(
+                    bindings, dict
+                ):
+                    save_preset_button_bindings(
+                        self.keys_config, preset, bindings
+                    )
             self.keys_config["button_bindings"] = copy.deepcopy(
                 self.working_bindings
             )

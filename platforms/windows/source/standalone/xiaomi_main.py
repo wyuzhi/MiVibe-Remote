@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.14"
+APP_VERSION = "0.1.15"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -30,6 +30,7 @@ os.environ.setdefault("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
 os.environ.setdefault("REMOTE_BRIDGE_PCM_PORT", "31680")
 os.environ.setdefault("REMOTE_BRIDGE_AUDIO_CONTROL_PORT", "31681")
 os.environ.setdefault("REMOTE_BRIDGE_XIAOMI_HID_TAP_PORT", "31684")
+os.environ.setdefault("REMOTE_BRIDGE_XIAOMI_CONTROL_PORT", str(CONTROL_PORT))
 os.environ.setdefault("REMOTE_BRIDGE_RAW_INPUT_NAME", "Xiaomi Remote")
 os.environ.setdefault("REMOTE_BRIDGE_RAW_INPUT_ID", "XiaomiRemoteRawInput")
 os.environ.setdefault("REMOTE_BRIDGE_RAW_INPUT_OWNER", "xiaomi-mapping")

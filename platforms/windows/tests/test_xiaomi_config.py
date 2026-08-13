@@ -1,5 +1,7 @@
+import json
 import sys
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -124,6 +126,100 @@ class XiaomiConfigTests(unittest.TestCase):
         self.assertEqual(config["voice_trigger_mode"], "hold")
         self.assertEqual(config["voice_hotkey"], "rightalt")
         self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
+
+    def test_each_preset_keeps_its_saved_custom_mapping(self) -> None:
+        config = default_config()
+        keys = default_keys_config()
+        keys["button_bindings"]["menu"] = [
+            {"type": "hotkey", "keys": ["f8"]}
+        ]
+
+        xiaomi_config.apply_preset_configuration(config, keys, "workbuddy")
+        keys["button_bindings"]["volume_up"] = [
+            {"type": "hotkey", "keys": ["ctrl", "z"]}
+        ]
+        xiaomi_config.apply_preset_configuration(config, keys, "codex")
+
+        self.assertEqual(
+            keys["button_bindings"]["menu"][0]["keys"], ["f8"]
+        )
+        xiaomi_config.apply_preset_configuration(config, keys, "workbuddy")
+        self.assertEqual(
+            keys["button_bindings"]["volume_up"][0]["keys"],
+            ["ctrl", "z"],
+        )
+
+    def test_saved_active_preset_and_mappings_survive_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "xiaomi.json"
+            keys_path = root / "xiaomi_keys.json"
+            config = default_config()
+            keys = default_keys_config()
+            xiaomi_config.apply_preset_configuration(
+                config, keys, "workbuddy"
+            )
+            keys["button_bindings"]["menu"] = [
+                {"type": "hotkey", "keys": ["f8"]}
+            ]
+            xiaomi_config.save_preset_button_bindings(
+                keys, "workbuddy", keys["button_bindings"]
+            )
+            xiaomi_config.save_config(config, config_path)
+            xiaomi_config.save_keys_config(keys, keys_path)
+
+            loaded_config = xiaomi_config.load_config(config_path)
+            loaded_keys = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertEqual(loaded_config["active_preset"], "workbuddy")
+            self.assertEqual(
+                loaded_keys["button_bindings"]["menu"][0]["keys"],
+                ["f8"],
+            )
+            self.assertEqual(
+                loaded_keys["preset_bindings"]["workbuddy"]["menu"][0][
+                    "keys"
+                ],
+                ["f8"],
+            )
+
+    def test_schema_one_mapping_migrates_into_active_preset(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "xiaomi.json").write_text(
+                json.dumps({"active_preset": "wechat"}), encoding="utf-8"
+            )
+            legacy = default_keys_config()
+            legacy["mapping_schema_version"] = 1
+            legacy.pop("preset_bindings", None)
+            legacy["button_bindings"]["tv"] = [
+                {"type": "hotkey", "keys": ["f9"]}
+            ]
+            keys_path = root / "xiaomi_keys.json"
+            keys_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+            migrated = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertEqual(
+                migrated["preset_bindings"]["wechat"]["tv"][0]["keys"],
+                ["f9"],
+            )
+
+    def test_special_key_alias_migration_adds_all_windows_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            keys_path = Path(temp_dir) / "xiaomi_keys.json"
+            legacy = default_keys_config()
+            legacy["button_aliases"]["volume_up"] = [
+                "kbd:VK_AF:SC_000:E0:down"
+            ]
+            keys_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+            migrated = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertIn(
+                "kbd:VK_AF:SC_000:N:down",
+                migrated["button_aliases"]["volume_up"],
+            )
 
     def test_normalizes_supported_address_formats(self):
         self.assertEqual(

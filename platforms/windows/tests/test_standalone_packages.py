@@ -28,6 +28,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
         self.assertIn('REMOTE_BRIDGE_XIAOMI_APP_ID", APP_ID', text)
         self.assertIn('REMOTE_BRIDGE_XIAOMI_RUNTIME_ID", APP_ID', text)
+        self.assertIn('REMOTE_BRIDGE_XIAOMI_CONTROL_PORT", str(CONTROL_PORT)', text)
         self.assertIn('child_environment["PYTHONUTF8"] = "1"', text)
         self.assertIn('child_environment["PYTHONIOENCODING"] = "utf-8"', text)
         self.assertNotIn("from bridges.t1", text)
@@ -37,7 +38,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.14"', text)
+        self.assertIn('[string] $Version = "0.1.15"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
