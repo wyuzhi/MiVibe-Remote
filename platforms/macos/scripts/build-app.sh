@@ -122,8 +122,15 @@ EMBEDDED_SPARKLE="$APP_DIR/Contents/Frameworks/Sparkle.framework"
 SPARKLE_VERSION_DIR="$EMBEDDED_SPARKLE/Versions/B"
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   SIGN_TIMESTAMP=(--timestamp=none)
+  # Hardened Runtime library validation requires every loaded framework to
+  # carry the same real Developer ID team. An ad-hoc signature has no team,
+  # so enabling runtime here makes dyld reject Sparkle at launch on macOS 26.
+  # Local builds remain fully code-signed, but Hardened Runtime is reserved
+  # for production builds signed with a Developer ID identity.
+  SIGN_OPTIONS=()
 else
   SIGN_TIMESTAMP=(--timestamp)
+  SIGN_OPTIONS=(--options runtime)
 fi
 
 sign_sparkle_component() {
@@ -131,7 +138,7 @@ sign_sparkle_component() {
   shift
   codesign \
     --force \
-    --options runtime \
+    "${SIGN_OPTIONS[@]}" \
     "$@" \
     "${SIGN_TIMESTAMP[@]}" \
     --sign "$SIGNING_IDENTITY" \
@@ -156,13 +163,11 @@ if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   BUNDLE_IDENTIFIER="$(plutil -extract CFBundleIdentifier raw -o - "$APP_DIR/Contents/Info.plist")"
   codesign \
     --force \
-    --options runtime \
     --timestamp=none \
     --sign - \
     "$APP_DIR/Contents/MacOS/$APP_NAME"
   codesign \
     --force \
-    --options runtime \
     --timestamp=none \
     --sign - \
     --requirements "=designated => identifier \"$BUNDLE_IDENTIFIER\"" \
