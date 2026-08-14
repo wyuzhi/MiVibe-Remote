@@ -3,10 +3,17 @@ import Combine
 import CoreBluetooth
 import SwiftUI
 
+extension Notification.Name {
+    static let showRemoteMicAbout = Notification.Name("com.mivibe.remote.show-about")
+}
+
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case connection
     case mapping
     case permissions
+    case about
+
+    static let mainFlow: [SettingsSection] = [.connection, .mapping, .permissions]
 
     var id: String { rawValue }
 
@@ -15,6 +22,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .connection: return "连接"
         case .mapping: return "按键"
         case .permissions: return "权限"
+        case .about: return "关于"
         }
     }
 
@@ -23,6 +31,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .connection: return "link"
         case .mapping: return "keyboard"
         case .permissions: return "shield.lefthalf.filled"
+        case .about: return "info.circle"
         }
     }
 }
@@ -56,6 +65,8 @@ private struct ShortcutEditingTarget: Identifiable {
 struct SettingsView: View {
     @ObservedObject var model: BridgeAppModel
     @ObservedObject var settings: AppSettings
+    let updatesConfigured: Bool
+    let onCheckForUpdates: () -> Void
 
     @State private var selectedSection: SettingsSection = .connection
     @State private var selectedRemoteButton: RemoteButton = .ok
@@ -66,9 +77,15 @@ struct SettingsView: View {
     @State private var advancedAudioExpanded = false
     @State private var installedApplicationBundleIdentifiers = Set<String>()
 
-    init(model: BridgeAppModel) {
+    init(
+        model: BridgeAppModel,
+        updatesConfigured: Bool = false,
+        onCheckForUpdates: @escaping () -> Void = {}
+    ) {
         self.model = model
         settings = model.settings
+        self.updatesConfigured = updatesConfigured
+        self.onCheckForUpdates = onCheckForUpdates
     }
 
     var body: some View {
@@ -83,6 +100,9 @@ struct SettingsView: View {
         .onAppear(perform: refreshRuntimeStates)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshRuntimeStates()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showRemoteMicAbout)) { _ in
+            selectedSection = .about
         }
         .sheet(item: $shortcutEditingTarget) { target in
             ShortcutEditorSheet(
@@ -104,10 +124,12 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(spacing: 10) {
-            ForEach(SettingsSection.allCases) { section in
+            ForEach(SettingsSection.mainFlow) { section in
                 sidebarButton(section)
             }
             Spacer(minLength: 0)
+            sidebarButton(.about, subtitle: "起司制作")
+            Divider()
             Button {
                 NSApp.terminate(nil)
             } label: {
@@ -129,7 +151,10 @@ struct SettingsView: View {
         .background(.regularMaterial)
     }
 
-    private func sidebarButton(_ section: SettingsSection) -> some View {
+    private func sidebarButton(
+        _ section: SettingsSection,
+        subtitle: String? = nil
+    ) -> some View {
         Button {
             selectedSection = section
         } label: {
@@ -138,6 +163,11 @@ struct SettingsView: View {
                     .font(.system(size: 21, weight: .semibold))
                 Text(section.title)
                     .font(.system(size: 13, weight: .semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
@@ -166,6 +196,13 @@ struct SettingsView: View {
                 .opacity(selectedSection == .permissions ? 1 : 0)
                 .allowsHitTesting(selectedSection == .permissions)
                 .accessibilityHidden(selectedSection != .permissions)
+            AboutView(
+                updatesConfigured: updatesConfigured,
+                onCheckForUpdates: onCheckForUpdates
+            )
+            .opacity(selectedSection == .about ? 1 : 0)
+            .allowsHitTesting(selectedSection == .about)
+            .accessibilityHidden(selectedSection != .about)
         }
     }
 

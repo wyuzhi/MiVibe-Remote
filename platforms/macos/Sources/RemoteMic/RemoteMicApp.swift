@@ -266,7 +266,14 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     private func makeSettingsWindowController() -> NSWindowController {
-        let hostingController = NSHostingController(rootView: SettingsView(model: model))
+        let hostingController = NSHostingController(
+            rootView: SettingsView(
+                model: model,
+                updatesConfigured: appUpdater?.isConfigured == true
+            ) { [weak self] in
+                self?.checkForUpdates()
+            }
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 650),
             styleMask: [.titled, .closable, .resizable],
@@ -287,8 +294,10 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     @objc private func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
+        showSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .showRemoteMicAbout, object: nil)
+        }
     }
 
     @objc private func checkForUpdates() {

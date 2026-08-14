@@ -61,4 +61,26 @@ struct BuildSigningTests {
         }
         #expect(componentOffsets == componentOffsets.sorted())
     }
+
+    @Test func aboutImagesAreCopiedUnchangedAndVerified() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let buildSource = try String(
+            contentsOf: root.appendingPathComponent("scripts/build-app.sh"),
+            encoding: .utf8
+        )
+        let verifySource = try String(
+            contentsOf: root.appendingPathComponent("scripts/verify-app.sh"),
+            encoding: .utf8
+        )
+
+        #expect(buildSource.contains("SHARED_ABOUT_DIR=\"$ROOT/../shared/about\""))
+        #expect(buildSource.contains("AuthorDouyin.jpg AuthorXiaohongshu.jpg"))
+        #expect(buildSource.contains("ditto --norsrc --noextattr --noqtn --noacl"))
+        #expect(verifySource.contains("AuthorDouyin.jpg"))
+        #expect(verifySource.contains("AuthorXiaohongshu.jpg"))
+        #expect(verifySource.components(separatedBy: "cmp -s").count == 3)
+    }
 }

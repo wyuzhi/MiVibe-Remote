@@ -40,6 +40,11 @@ struct AppLifecycleTests {
         #expect(!settingsSource.contains("settings-navigation-selection"))
         #expect(settingsSource.contains("ZStack"))
         #expect(settingsSource.contains(".allowsHitTesting(selectedSection =="))
+        #expect(settingsSource.contains("SettingsSection.mainFlow"))
+        #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
+        #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))
+        #expect(appSource.contains("NotificationCenter.default.post(name: .showRemoteMicAbout"))
+        #expect(!appSource.contains("orderFrontStandardAboutPanel"))
         #expect(infoPlist.contains("<key>LSUIElement</key>"))
         #expect(infoPlist.contains("<false/>"))
     }

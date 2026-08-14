@@ -10,6 +10,7 @@ APP="${1:-$ROOT/dist/MiVibe Remote.app}"
 PLIST="$APP/Contents/Info.plist"
 BINARY="$APP/Contents/MacOS/RemoteMic"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+SHARED_ABOUT_DIR="$ROOT/../shared/about"
 
 test -d "$APP"
 test -f "$PLIST"
@@ -24,6 +25,14 @@ test -f "$APP/Contents/Resources/StatusIconTemplate@2x.png"
 test -f "$APP/Contents/Resources/StatusIconActiveTemplate.png"
 test -f "$APP/Contents/Resources/StatusIconActiveTemplate@2x.png"
 test -f "$APP/Contents/Resources/RemoteProduct.png"
+test -f "$APP/Contents/Resources/AuthorDouyin.jpg"
+test -f "$APP/Contents/Resources/AuthorXiaohongshu.jpg"
+cmp -s \
+  "$SHARED_ABOUT_DIR/AuthorDouyin.jpg" \
+  "$APP/Contents/Resources/AuthorDouyin.jpg"
+cmp -s \
+  "$SHARED_ABOUT_DIR/AuthorXiaohongshu.jpg" \
+  "$APP/Contents/Resources/AuthorXiaohongshu.jpg"
 test -f "$APP/Contents/Resources/虚拟麦克风说明.md"
 test -d "$SPARKLE"
 test -x "$SPARKLE/Versions/B/Sparkle"
@@ -75,7 +84,7 @@ xcrun vtool -show-build "$BINARY" | rg -q 'minos 26\.0'
 otool -L "$BINARY" | rg -q '@rpath/Sparkle\.framework/Versions/B/Sparkle'
 otool -l "$BINARY" | rg -q '@executable_path/\.\./Frameworks'
 
-EXPECTED_APP_FILES=$'Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate\nContents/Frameworks/Sparkle.framework/Versions/B/Sparkle\nContents/Frameworks/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater\nContents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader\nContents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer\nContents/Info.plist\nContents/MacOS/RemoteMic\nContents/Resources/AppIcon.icns\nContents/Resources/COPYRIGHT.md\nContents/Resources/LICENSE.md\nContents/Resources/README.md\nContents/Resources/RemoteProduct.png\nContents/Resources/StatusIconActiveTemplate.png\nContents/Resources/StatusIconActiveTemplate@2x.png\nContents/Resources/StatusIconTemplate.png\nContents/Resources/StatusIconTemplate@2x.png\nContents/Resources/THIRD_PARTY_NOTICES.md\nContents/Resources/虚拟麦克风说明.md\nContents/_CodeSignature/CodeResources'
+EXPECTED_APP_FILES=$'Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate\nContents/Frameworks/Sparkle.framework/Versions/B/Sparkle\nContents/Frameworks/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater\nContents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader\nContents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer\nContents/Info.plist\nContents/MacOS/RemoteMic\nContents/Resources/AppIcon.icns\nContents/Resources/AuthorDouyin.jpg\nContents/Resources/AuthorXiaohongshu.jpg\nContents/Resources/COPYRIGHT.md\nContents/Resources/LICENSE.md\nContents/Resources/README.md\nContents/Resources/RemoteProduct.png\nContents/Resources/StatusIconActiveTemplate.png\nContents/Resources/StatusIconActiveTemplate@2x.png\nContents/Resources/StatusIconTemplate.png\nContents/Resources/StatusIconTemplate@2x.png\nContents/Resources/THIRD_PARTY_NOTICES.md\nContents/Resources/虚拟麦克风说明.md\nContents/_CodeSignature/CodeResources'
 while IFS= read -r expected_file; do
   test -f "$APP/$expected_file"
 done <<< "$EXPECTED_APP_FILES"

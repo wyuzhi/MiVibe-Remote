@@ -8,6 +8,7 @@ DISPLAY_NAME="MiVibe Remote"
 OUTPUT_DIR="$ROOT/dist"
 APP_DIR="$OUTPUT_DIR/$DISPLAY_NAME.app"
 SIGNING_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+SHARED_ABOUT_DIR="$ROOT/../shared/about"
 
 if [[ "$#" -ne 0 ]]; then
   print -u2 "usage: $0"
@@ -104,6 +105,15 @@ for icon_resource in \
   ditto --norsrc --noextattr --noqtn --noacl \
     "$ROOT/Resources/$icon_resource" \
     "$APP_DIR/Contents/Resources/$icon_resource"
+done
+for about_resource in AuthorDouyin.jpg AuthorXiaohongshu.jpg; do
+  if [[ ! -f "$SHARED_ABOUT_DIR/$about_resource" ]]; then
+    print -u2 "missing shared About resource: $SHARED_ABOUT_DIR/$about_resource"
+    exit 1
+  fi
+  ditto --norsrc --noextattr --noqtn --noacl \
+    "$SHARED_ABOUT_DIR/$about_resource" \
+    "$APP_DIR/Contents/Resources/$about_resource"
 done
 ditto --norsrc --noextattr --noqtn --noacl \
   "$ROOT/Resources/虚拟麦克风说明.md" \

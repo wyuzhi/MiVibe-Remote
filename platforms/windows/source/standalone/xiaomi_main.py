@@ -40,6 +40,8 @@ import pystray
 
 from runtime_launcher import role_command
 from bridges.xiaomi.xiaomi_config import APPDATA, CONFIG_PATH, load_config
+from standalone.about_info import AUTHOR_LINE
+from standalone.about_window import AboutWindow
 from standalone.windows_update import MainThreadShutdownBridge, WinSparkleUpdater
 
 
@@ -205,6 +207,13 @@ class XiaomiApp:
             self._request_update_shutdown,
             self._can_install_update,
         )
+        self.about = AboutWindow(
+            self.root,
+            APP_NAME,
+            APP_VERSION,
+            self.check_updates,
+            log,
+        )
         self._build_ui()
         self._start_tray()
         self._start_control()
@@ -222,12 +231,32 @@ class XiaomiApp:
     def _build_ui(self) -> None:
         frame = ttk.Frame(self.root, padding=24)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=APP_NAME, font=("Microsoft YaHei UI", 18, "bold")).pack(anchor="w")
+        title_row = ttk.Frame(frame)
+        title_row.pack(fill="x")
+        ttk.Label(
+            title_row,
+            text=APP_NAME,
+            font=("Microsoft YaHei UI", 18, "bold"),
+        ).pack(side="left", anchor="w")
+        ttk.Button(title_row, text="关于", width=7, command=self.show_about).pack(
+            side="right"
+        )
         ttk.Label(
             frame,
             text=f"v{APP_VERSION} · Windows · 独立运行",
             foreground="#666666",
-        ).pack(anchor="w", pady=(2, 20))
+        ).pack(anchor="w", pady=(2, 1))
+        author_link = ttk.Label(
+            frame,
+            text=AUTHOR_LINE,
+            foreground="#1677ff",
+            cursor="hand2",
+            takefocus=True,
+        )
+        author_link.pack(anchor="w", pady=(0, 15))
+        author_link.bind("<Button-1>", lambda _event: self.show_about())
+        author_link.bind("<Return>", lambda _event: self.show_about())
+        author_link.bind("<space>", lambda _event: self.show_about())
         ttk.Label(frame, textvariable=self.status_var, font=("Microsoft YaHei UI", 12, "bold")).pack(anchor="w")
         ttk.Label(
             frame,
@@ -266,6 +295,10 @@ class XiaomiApp:
             pystray.MenuItem("按键与语音设置", lambda *_: self.root.after(0, self.open_settings)),
             pystray.MenuItem("检查更新", lambda *_: self.root.after(0, self.check_updates)),
             pystray.MenuItem("重启桥接", lambda *_: self.root.after(0, self.workers.restart_bridge)),
+            pystray.MenuItem(
+                "关于 MiVibe Remote",
+                lambda *_: self.root.after(0, self.show_about),
+            ),
             pystray.MenuItem("退出", lambda *_: self.root.after(0, self.exit)),
         )
         self.tray = pystray.Icon(APP_ID, self._icon(), APP_NAME, menu)
@@ -360,6 +393,9 @@ class XiaomiApp:
                 "MiVibe Remote",
                 "无法打开更新检查，请稍后重试或查看日志。",
             )
+
+    def show_about(self) -> None:
+        self.about.show()
 
     def repair_audio(self) -> None:
         if getattr(self, "_audio_repair_running", False):
