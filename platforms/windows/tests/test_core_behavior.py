@@ -27,6 +27,69 @@ from bridges.xiaomi import xiaomi_config
 
 
 class XiaomiCoreBehaviorTests(unittest.TestCase):
+    def test_voice_shortcut_uses_checked_hardware_scan_code_edges(self) -> None:
+        keyboard = mock.Mock()
+        with mock.patch.object(xiaomi_core.os, "name", "nt"):
+            shortcut = xiaomi_core.VoiceShortcut(
+                "ctrl+win",
+                keyboard=keyboard,
+            )
+
+        with mock.patch("builtins.print"):
+            shortcut.press()
+            shortcut.release()
+
+        self.assertEqual(
+            keyboard.send_scan_code_vk.call_args_list,
+            [
+                mock.call(0x11, False),
+                mock.call(0x5B, False),
+                mock.call(0x5B, True),
+                mock.call(0x11, True),
+            ],
+        )
+        self.assertFalse(shortcut.pressed)
+
+    def test_voice_shortcut_does_not_claim_success_when_sendinput_fails(self) -> None:
+        keyboard = mock.Mock()
+        keyboard.send_scan_code_vk.side_effect = OSError("SendInput blocked")
+        with mock.patch.object(xiaomi_core.os, "name", "nt"):
+            shortcut = xiaomi_core.VoiceShortcut(
+                "rightalt",
+                keyboard=keyboard,
+            )
+
+        with (
+            self.assertRaisesRegex(OSError, "SendInput blocked"),
+            mock.patch("builtins.print") as output,
+        ):
+            shortcut.press()
+
+        output.assert_not_called()
+        self.assertFalse(shortcut.pressed)
+
+    def test_voice_shortcut_rolls_back_a_partially_pressed_chord(self) -> None:
+        keyboard = mock.Mock()
+        keyboard.send_scan_code_vk.side_effect = [None, OSError("Win blocked"), None]
+        with mock.patch.object(xiaomi_core.os, "name", "nt"):
+            shortcut = xiaomi_core.VoiceShortcut(
+                "ctrl+win",
+                keyboard=keyboard,
+            )
+
+        with self.assertRaisesRegex(OSError, "Win blocked"):
+            shortcut.press()
+
+        self.assertEqual(
+            keyboard.send_scan_code_vk.call_args_list,
+            [
+                mock.call(0x11, False),
+                mock.call(0x5B, False),
+                mock.call(0x11, True),
+            ],
+        )
+        self.assertFalse(shortcut.pressed)
+
     def test_bluetooth_address_requires_exactly_six_octets(self) -> None:
         self.assertEqual(
             xiaomi_core.address_to_int("AA:BB:CC:DD:EE:FF"),

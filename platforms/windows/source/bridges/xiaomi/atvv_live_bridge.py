@@ -1080,69 +1080,57 @@ def buffer_bytes(buffer) -> bytes:
 
 
 class VoiceShortcut:
-    """Emit a configurable voice-input shortcut as a tap or held chord."""
-
-    KEYEVENTF_EXTENDEDKEY = 0x0001
-    KEYEVENTF_KEYUP = 0x0002
+    """Emit a configurable voice-input shortcut as a hardware-like chord."""
 
     VK = HOTKEY_VK
-    EXTENDED_VKS = {
-        0x21,
-        0x22,
-        0x23,
-        0x24,
-        0x25,
-        0x26,
-        0x27,
-        0x28,
-        0x2C,
-        0x2D,
-        0x2E,
-        0x5B,
-        0x5C,
-        0x5D,
-        0xA3,
-        0xA5,
-        0xAD,
-        0xAE,
-        0xAF,
-        0xB0,
-        0xB1,
-        0xB2,
-        0xB3,
-    }
 
-    def __init__(self, hotkey: str, enabled: bool = True) -> None:
+    def __init__(self, hotkey: str, enabled: bool = True, keyboard=None) -> None:
         self.enabled = enabled and os.name == "nt"
         self.pressed = False
         self.hotkey = hotkey.strip()
         self.virtual_keys = self._parse_hotkey(self.hotkey) if self.enabled else []
         if self.enabled:
-            self.user32 = ctypes.windll.user32
-            self.user32.keybd_event.argtypes = (
-                ctypes.c_ubyte,
-                ctypes.c_ubyte,
-                ctypes.c_ulong,
-                ctypes.c_size_t,
-            )
-            self.user32.keybd_event.restype = None
+            if keyboard is None:
+                from bridges import raw_input_bridge as keyboard
+
+            self.keyboard = keyboard
 
     @classmethod
     def _parse_hotkey(cls, value: str) -> list[int]:
         return resolve_hotkey_virtual_keys(value)
 
     def _key(self, virtual_key: int, key_up: bool) -> None:
-        scan_code = self.user32.MapVirtualKeyW(virtual_key, 0)
-        flags = self.KEYEVENTF_EXTENDEDKEY if virtual_key in self.EXTENDED_VKS else 0
-        if key_up:
-            flags |= self.KEYEVENTF_KEYUP
-        self.user32.keybd_event(virtual_key, scan_code, flags, 0)
+        self.keyboard.send_scan_code_vk(virtual_key, key_up)
+
+    def _press_chord(self) -> None:
+        pressed: list[int] = []
+        try:
+            for virtual_key in self.virtual_keys:
+                self._key(virtual_key, False)
+                pressed.append(virtual_key)
+        except (OSError, ValueError):
+            for virtual_key in reversed(pressed):
+                try:
+                    self._key(virtual_key, True)
+                except (OSError, ValueError):
+                    pass
+            raise
+
+    def _release_chord(self) -> None:
+        first_error: OSError | ValueError | None = None
+        for virtual_key in reversed(self.virtual_keys):
+            try:
+                self._key(virtual_key, True)
+            except (OSError, ValueError) as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
     def press(self) -> None:
         if not self.enabled or self.pressed:
             return
-        for virtual_key in self.virtual_keys:
-            self._key(virtual_key, False)
+        self._press_chord()
         self.pressed = True
         print(f"VOICE SHORTCUT DOWN shortcut={self.hotkey}", flush=True)
 
@@ -1151,18 +1139,17 @@ class VoiceShortcut:
 
         if not self.enabled or self.pressed:
             return
-        for virtual_key in self.virtual_keys:
-            self._key(virtual_key, False)
+        self._press_chord()
+        self.pressed = True
         time.sleep(max(30, min(int(hold_ms), 200)) / 1000.0)
-        for virtual_key in reversed(self.virtual_keys):
-            self._key(virtual_key, True)
+        self._release_chord()
+        self.pressed = False
         print(f"VOICE SHORTCUT TAP shortcut={self.hotkey}", flush=True)
 
     def release(self) -> None:
         if not self.enabled or not self.pressed:
             return
-        for virtual_key in reversed(self.virtual_keys):
-            self._key(virtual_key, True)
+        self._release_chord()
         self.pressed = False
         print("VOICE SHORTCUT UP submit=true", flush=True)
 

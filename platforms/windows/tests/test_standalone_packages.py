@@ -91,6 +91,17 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("def send_scan_code_hotkey", text)
         self.assertIn("KEYBDINPUT(0, scan, flags, 0, 0)", text)
 
+    def test_xiaomi_voice_shortcut_uses_checked_scan_code_sender(self) -> None:
+        text = (
+            SOURCE / "bridges" / "xiaomi" / "atvv_live_bridge.py"
+        ).read_text(encoding="utf-8")
+        voice_shortcut = text.split("class VoiceShortcut:", 1)[1].split(
+            "class VoicePcmStats:", 1
+        )[0]
+
+        self.assertIn("send_scan_code_vk", voice_shortcut)
+        self.assertNotIn("keybd_event", voice_shortcut)
+
     def test_xiaomi_installer_does_not_change_global_microphone_or_privacy(self) -> None:
         text = (
             SETUP / "configure-xiaomi-audio.ps1"
