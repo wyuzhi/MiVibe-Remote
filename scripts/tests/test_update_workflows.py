@@ -18,7 +18,10 @@ class UpdateWorkflowSafetyTests(unittest.TestCase):
         self.assertNotIn("publish-update-feed", self.build)
         self.assertNotIn("releases/download/update-feed", self.build)
         self.assertNotIn("aws s3 cp", self.build)
-        self.assertIn("Tagged release builds require UPDATE_BASE_URL", self.build)
+        self.assertIn(
+            "building with updates safely disabled",
+            self.build.lower(),
+        )
         self.assertIn(
             "Private GitHub Release URLs cannot be used as the client update origin",
             self.build,
@@ -32,6 +35,7 @@ class UpdateWorkflowSafetyTests(unittest.TestCase):
         self.assertIn("Prereleases cannot be promoted", self.promote)
         self.assertIn("github.event.release.prerelease == false", self.promote)
         self.assertIn("startsWith(github.event.release.tag_name, 'v')", self.promote)
+        self.assertIn("vars.UPDATE_BASE_URL != ''", self.promote)
 
     def test_external_origin_and_signing_material_are_mandatory(self) -> None:
         for setting in (

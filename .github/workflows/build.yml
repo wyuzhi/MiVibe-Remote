@@ -44,14 +44,6 @@ jobs:
         run: |
           set -euo pipefail
           base_url="${UPDATE_BASE_URL%/}"
-          is_tag=false
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            is_tag=true
-          fi
-          if [[ "$is_tag" == true && ( -z "$base_url" || -z "$UPDATE_PUBLIC_KEY" ) ]]; then
-            echo "::error::Tagged release builds require UPDATE_BASE_URL and UPDATE_ED25519_PUBLIC_KEY"
-            exit 1
-          fi
           if [[ -n "$base_url" && "$base_url" != https://* ]]; then
             echo "::error::UPDATE_BASE_URL must be an absolute HTTPS URL"
             exit 1
@@ -123,11 +115,6 @@ jobs:
           REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
         run: |
           $baseUrl = ([string] $env:UPDATE_BASE_URL).TrimEnd('/')
-          $isTag = $env:GITHUB_REF.StartsWith('refs/tags/v')
-          if ($isTag -and ((-not $baseUrl) -or (-not $env:UPDATE_PUBLIC_KEY))) {
-            Write-Error 'Tagged release builds require UPDATE_BASE_URL and UPDATE_ED25519_PUBLIC_KEY'
-            exit 1
-          }
           if ($baseUrl -and (-not $baseUrl.StartsWith('https://'))) {
             Write-Error 'UPDATE_BASE_URL must be an absolute HTTPS URL'
             exit 1
