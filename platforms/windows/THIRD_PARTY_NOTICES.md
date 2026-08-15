@@ -23,6 +23,16 @@ MiVibe Remote 安装包不内嵌或再分发 VB-CABLE。首次安装时，用户
 
 只有小米安装流程会按需下载 VB-CABLE；T1 和 V60 不使用虚拟音频驱动。
 
+## WinSparkle 0.9.4
+
+- 用途：为 Windows 独立版提供原生的在线更新检查、下载、Ed25519 签名校验和安装提示。
+- 官方文件：[WinSparkle-0.9.4.zip](https://github.com/vslavik/winsparkle/releases/download/v0.9.4/WinSparkle-0.9.4.zip)
+- 分发包 SHA-256：`6037DF37FC263BD1650A1C4949681A9D40FFE991D01F35892A406CB5D103C976`
+- x64 DLL SHA-256：`9B43B1C16EE39FB9A91B5BD75138767898779510E0836BE2919250607CDBE8AB`
+- 协议：MIT；构建脚本会获取并校验官方分发包，安装目录会保留 WinSparkle 与 Expat 的许可文本。
+
+程序只内置用于校验更新的公开 Ed25519 公钥。更新签名私钥和会员凭证不属于运行时组件，不得写入仓库或安装包。
+
 ## Python 依赖
 
 运行和构建依赖包括 hidapi、NumPy、python-sounddevice、Pillow、psutil、pystray、WinRT Python projections 与 PyInstaller。准确版本见 `requirements.txt` 和 `requirements-dev.txt`；再分发时应保留这些软件各自要求的许可证与通知。

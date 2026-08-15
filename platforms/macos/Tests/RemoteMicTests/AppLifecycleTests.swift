@@ -22,6 +22,11 @@ struct AppLifecycleTests {
         )
 
         #expect(appSource.contains("configureMainMenu()"))
+        #expect(appSource.contains("appUpdater = AppUpdater()"))
+        #expect(appSource.contains("appUpdater?.start()"))
+        #expect(appSource.contains("menu.addItem(updateMenuItem())"))
+        #expect(appSource.contains("applicationMenu.addItem(updateMenuItem())"))
+        #expect(appSource.contains("检查更新…（自动更新未配置）"))
         #expect(appSource.contains("title: \"退出 MiVibe Remote\""))
         #expect(appSource.contains("keyEquivalent: \"q\""))
         #expect(appSource.contains("application.setActivationPolicy(.regular)"))
@@ -35,6 +40,11 @@ struct AppLifecycleTests {
         #expect(!settingsSource.contains("settings-navigation-selection"))
         #expect(settingsSource.contains("ZStack"))
         #expect(settingsSource.contains(".allowsHitTesting(selectedSection =="))
+        #expect(settingsSource.contains("SettingsSection.mainFlow"))
+        #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
+        #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))
+        #expect(appSource.contains("NotificationCenter.default.post(name: .showRemoteMicAbout"))
+        #expect(!appSource.contains("orderFrontStandardAboutPanel"))
         #expect(infoPlist.contains("<key>LSUIElement</key>"))
         #expect(infoPlist.contains("<false/>"))
     }

@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.15"
+APP_VERSION = "0.1.16"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -40,6 +40,9 @@ import pystray
 
 from runtime_launcher import role_command
 from bridges.xiaomi.xiaomi_config import APPDATA, CONFIG_PATH, load_config
+from standalone.about_info import AUTHOR_LINE
+from standalone.about_window import AboutWindow
+from standalone.windows_update import MainThreadShutdownBridge, WinSparkleUpdater
 
 
 LOG_DIR = APPDATA / "logs"
@@ -190,10 +193,27 @@ class XiaomiApp:
         self.workers = XiaomiWorkers()
         self.settings_processes: list[subprocess.Popen] = []
         self.stop_event = threading.Event()
+        self._main_thread_id = threading.get_ident()
+        self._update_shutdown = MainThreadShutdownBridge(log)
+        self._exiting = False
         self.control_socket: socket.socket | None = None
         self.tray: pystray.Icon | None = None
         self.status_var = tk.StringVar(value="正在启动")
         self.detail_var = tk.StringVar(value="")
+        self.updater = WinSparkleUpdater(
+            APP_NAME,
+            APP_VERSION,
+            log,
+            self._request_update_shutdown,
+            self._can_install_update,
+        )
+        self.about = AboutWindow(
+            self.root,
+            APP_NAME,
+            APP_VERSION,
+            self.check_updates,
+            log,
+        )
         self._build_ui()
         self._start_tray()
         self._start_control()
@@ -205,17 +225,38 @@ class XiaomiApp:
             self.detail_var.set("点击“打开日志”查看原因；窗口会保留，不会静默退出。")
         if minimized:
             self.root.withdraw()
+        self.root.after(1500, self._start_updater)
         self.root.after(800, self._poll)
 
     def _build_ui(self) -> None:
         frame = ttk.Frame(self.root, padding=24)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=APP_NAME, font=("Microsoft YaHei UI", 18, "bold")).pack(anchor="w")
+        title_row = ttk.Frame(frame)
+        title_row.pack(fill="x")
+        ttk.Label(
+            title_row,
+            text=APP_NAME,
+            font=("Microsoft YaHei UI", 18, "bold"),
+        ).pack(side="left", anchor="w")
+        ttk.Button(title_row, text="关于", width=7, command=self.show_about).pack(
+            side="right"
+        )
         ttk.Label(
             frame,
             text=f"v{APP_VERSION} · Windows · 独立运行",
             foreground="#666666",
-        ).pack(anchor="w", pady=(2, 20))
+        ).pack(anchor="w", pady=(2, 1))
+        author_link = ttk.Label(
+            frame,
+            text=AUTHOR_LINE,
+            foreground="#1677ff",
+            cursor="hand2",
+            takefocus=True,
+        )
+        author_link.pack(anchor="w", pady=(0, 15))
+        author_link.bind("<Button-1>", lambda _event: self.show_about())
+        author_link.bind("<Return>", lambda _event: self.show_about())
+        author_link.bind("<space>", lambda _event: self.show_about())
         ttk.Label(frame, textvariable=self.status_var, font=("Microsoft YaHei UI", 12, "bold")).pack(anchor="w")
         ttk.Label(
             frame,
@@ -229,6 +270,7 @@ class XiaomiApp:
         ttk.Button(buttons, text="按键与语音设置", command=self.open_settings).pack(side="left")
         ttk.Button(buttons, text="重启桥接", command=self.restart_workers).pack(side="left", padx=10)
         ttk.Button(buttons, text="安装/修复语音驱动", command=self.repair_audio).pack(side="left")
+        ttk.Button(buttons, text="检查更新", command=self.check_updates).pack(side="left", padx=(10, 0))
         ttk.Button(buttons, text="打开日志", command=self.open_logs).pack(side="left")
         ttk.Button(buttons, text="退出", command=self.exit).pack(side="right")
         ttk.Label(
@@ -251,7 +293,12 @@ class XiaomiApp:
         menu = pystray.Menu(
             pystray.MenuItem("打开状态", lambda *_: self.root.after(0, self.show)),
             pystray.MenuItem("按键与语音设置", lambda *_: self.root.after(0, self.open_settings)),
+            pystray.MenuItem("检查更新", lambda *_: self.root.after(0, self.check_updates)),
             pystray.MenuItem("重启桥接", lambda *_: self.root.after(0, self.workers.restart_bridge)),
+            pystray.MenuItem(
+                "关于 MiVibe Remote",
+                lambda *_: self.root.after(0, self.show_about),
+            ),
             pystray.MenuItem("退出", lambda *_: self.root.after(0, self.exit)),
         )
         self.tray = pystray.Icon(APP_ID, self._icon(), APP_NAME, menu)
@@ -314,6 +361,42 @@ class XiaomiApp:
             self.status_var.set("后台桥接启动失败")
             self.detail_var.set("主窗口会继续保留。点击“打开日志”查看具体错误。")
 
+    def _start_updater(self) -> None:
+        self.updater.initialize()
+
+    def _can_install_update(self) -> bool:
+        settings_are_open = any(
+            process.poll() is None for process in self.settings_processes
+        )
+        return not settings_are_open and not getattr(
+            self, "_audio_repair_running", False
+        )
+
+    def _request_update_shutdown(self) -> None:
+        """Exit gracefully after WinSparkle launches the update installer."""
+
+        if threading.get_ident() == self._main_thread_id:
+            self.exit(for_update=True)
+            return
+
+        self._update_shutdown.request_and_wait()
+
+    def check_updates(self) -> None:
+        if not self.updater.initialized and not self.updater.initialize():
+            messagebox.showinfo(
+                "MiVibe Remote",
+                self.updater.disabled_reason or "当前无法启动在线更新服务。",
+            )
+            return
+        if not self.updater.check_with_ui():
+            messagebox.showerror(
+                "MiVibe Remote",
+                "无法打开更新检查，请稍后重试或查看日志。",
+            )
+
+    def show_about(self) -> None:
+        self.about.show()
+
     def repair_audio(self) -> None:
         if getattr(self, "_audio_repair_running", False):
             messagebox.showinfo(
@@ -366,6 +449,11 @@ class XiaomiApp:
         self.root.withdraw()
 
     def _poll(self) -> None:
+        if self._update_shutdown.dispatch_one(
+            lambda completion: self.exit(for_update=True, completion=completion)
+        ):
+            return
+
         status = self.workers.status()
         if status["bridge_alive"] and status["audio_alive"]:
             text = "按键桥接和小米语音均已运行"
@@ -386,7 +474,17 @@ class XiaomiApp:
             self.tray.title = f"{APP_NAME} · {text}"
         self.root.after(1000, self._poll)
 
-    def exit(self) -> None:
+    def exit(
+        self,
+        *,
+        for_update: bool = False,
+        completion: threading.Event | None = None,
+    ) -> None:
+        if self._exiting:
+            if completion:
+                completion.set()
+            return
+        self._exiting = True
         self.stop_event.set()
         if self.control_socket:
             self.control_socket.close()
@@ -394,9 +492,18 @@ class XiaomiApp:
             if process.poll() is None:
                 process.terminate()
         self.workers.stop()
+        # Calling WinSparkle cleanup from its own shutdown callback may wait on
+        # the callback and deadlock. The process unloads the DLL moments later.
+        if not for_update:
+            self.updater.cleanup()
         if self.tray:
             self.tray.stop()
-        self.root.after(80, self.root.destroy)
+        if for_update:
+            self.root.destroy()
+        else:
+            self.root.after(80, self.root.destroy)
+        if completion:
+            completion.set()
 
 
 def acquire_single_instance() -> bool:

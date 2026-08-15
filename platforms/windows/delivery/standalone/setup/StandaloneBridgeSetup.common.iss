@@ -38,6 +38,8 @@ WizardStyle=modern
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=yes
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
 InfoBeforeFile={#ReadmeFile}
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
@@ -64,6 +66,8 @@ Source: "stop-product.ps1"; Flags: dontcopy
 #if ProductKind == "xiaomi"
 Source: "configure-xiaomi-audio.ps1"; DestDir: "{app}\support"; Flags: ignoreversion
 Source: "..\..\vendor\frida-COPYING.txt"; DestDir: "{app}\support\third-party"; Flags: ignoreversion
+Source: "..\..\vendor\winsparkle\COPYING"; DestDir: "{app}\support\third-party"; DestName: "WinSparkle-COPYING.txt"; Flags: ignoreversion
+Source: "..\..\vendor\winsparkle\COPYING.expat"; DestDir: "{app}\support\third-party"; DestName: "WinSparkle-COPYING.expat.txt"; Flags: ignoreversion
 #else
 Source: "configure-native-audio.ps1"; DestDir: "{app}\support"; Flags: ignoreversion
 #endif
@@ -81,11 +85,11 @@ Name: "{autoprograms}\{#AppGroupName}\{#AppName} 麦克风检查与修复"; File
 
 [Run]
 #if ProductKind == "xiaomi"
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-xiaomi-audio.ps1"" -Mode Install -AppPath ""{app}"""; WorkingDir: "{app}\support"; StatusMsg: "正在检查小米语音环境..."; Flags: waituntilterminated skipifsilent
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-xiaomi-audio.ps1"" -Mode Install -AppPath ""{app}"""; WorkingDir: "{app}\support"; StatusMsg: "正在检查小米语音环境..."; Flags: waituntilterminated skipifsilent; Check: not IsOnlineUpdate
 #else
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\configure-native-audio.ps1"" -Mode Install -ProductId ""{#ProductId}"" -ProductName ""{#AppName}"" -EndpointPattern ""{#EndpointPattern}"""; WorkingDir: "{app}\support"; StatusMsg: "正在配置设备自带麦克风..."; Flags: waituntilterminated skipifsilent
 #endif
-Filename: "{app}\{#AppExeName}"; Description: "立即启动 {#AppName}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "立即启动 {#AppName}"; WorkingDir: "{app}"; Flags: nowait postinstall; Check: ShouldLaunchApplication
 
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\support\stop-product.ps1"" -AppPath ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "StopProduct"
@@ -96,6 +100,31 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 #endif
 
 [Code]
+function HasCommandLineSwitch(Value: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := False;
+  for Index := 1 to ParamCount do
+  begin
+    if CompareText(ParamStr(Index), Value) = 0 then
+    begin
+      Result := True;
+      exit;
+    end;
+  end;
+end;
+
+function IsOnlineUpdate(): Boolean;
+begin
+  Result := HasCommandLineSwitch('/UPDATED');
+end;
+
+function ShouldLaunchApplication(): Boolean;
+begin
+  Result := IsOnlineUpdate() or (not WizardSilent());
+end;
+
 function StopRunningProduct(): Boolean;
 var
   ResultCode: Integer;

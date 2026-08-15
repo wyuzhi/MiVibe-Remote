@@ -13,6 +13,21 @@ permissions:
   contents: write
 
 jobs:
+  update-feed-tests:
+    name: Update feed tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-updates.txt
+      - name: Install update feed dependencies
+        run: python -m pip install -r scripts/requirements-updates.txt
+      - name: Test signed appcast generator
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py' -v
+
   macos:
     name: macOS app and DMG
     runs-on: macos-26
@@ -21,6 +36,46 @@ jobs:
         working-directory: platforms/macos
     steps:
       - uses: actions/checkout@v4
+      - name: Configure update client build
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+          UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_ED25519_PUBLIC_KEY }}
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          base_url="${UPDATE_BASE_URL%/}"
+          is_tag=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            is_tag=true
+          fi
+          if [[ "$is_tag" == true && ( -z "$base_url" || -z "$UPDATE_PUBLIC_KEY" ) ]]; then
+            echo "::error::Tagged release builds require UPDATE_BASE_URL and UPDATE_ED25519_PUBLIC_KEY"
+            exit 1
+          fi
+          if [[ -n "$base_url" && "$base_url" != https://* ]]; then
+            echo "::error::UPDATE_BASE_URL must be an absolute HTTPS URL"
+            exit 1
+          fi
+          if [[ -n "$base_url" ]]; then
+            python3 - "$base_url" <<'PY'
+          import sys
+          from urllib.parse import urlsplit
+          parsed = urlsplit(sys.argv[1])
+          if parsed.username or parsed.password or parsed.query or parsed.fragment:
+              raise SystemExit("UPDATE_BASE_URL must not contain credentials, a query string, or a fragment")
+          PY
+          fi
+          private_github_prefix="https://github.com/${GITHUB_REPOSITORY}/"
+          if [[ "$REPOSITORY_IS_PRIVATE" == true && "$base_url" == "$private_github_prefix"* ]]; then
+            echo "::error::Private GitHub Release URLs cannot be used as the client update origin"
+            exit 1
+          fi
+          if [[ -n "$base_url" && -n "$UPDATE_PUBLIC_KEY" ]]; then
+            echo "MIVIBE_APPCAST_URL=$base_url/macos-appcast.xml" >> "$GITHUB_ENV"
+            echo "MIVIBE_UPDATE_ED25519_PUBLIC_KEY=$UPDATE_PUBLIC_KEY" >> "$GITHUB_ENV"
+          else
+            echo "External update origin or public key is not configured; building with updates safely disabled."
+          fi
       - name: Install verification tools
         run: brew install ripgrep
       - name: Show toolchain
@@ -60,6 +115,41 @@ jobs:
         working-directory: platforms/windows
     steps:
       - uses: actions/checkout@v4
+      - name: Configure update client build
+        shell: pwsh
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+          UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_ED25519_PUBLIC_KEY }}
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          $baseUrl = ([string] $env:UPDATE_BASE_URL).TrimEnd('/')
+          $isTag = $env:GITHUB_REF.StartsWith('refs/tags/v')
+          if ($isTag -and ((-not $baseUrl) -or (-not $env:UPDATE_PUBLIC_KEY))) {
+            Write-Error 'Tagged release builds require UPDATE_BASE_URL and UPDATE_ED25519_PUBLIC_KEY'
+            exit 1
+          }
+          if ($baseUrl -and (-not $baseUrl.StartsWith('https://'))) {
+            Write-Error 'UPDATE_BASE_URL must be an absolute HTTPS URL'
+            exit 1
+          }
+          if ($baseUrl) {
+            $parsedBaseUrl = [Uri] $baseUrl
+            if ($parsedBaseUrl.UserInfo -or $parsedBaseUrl.Query -or $parsedBaseUrl.Fragment) {
+              Write-Error 'UPDATE_BASE_URL must not contain credentials, a query string, or a fragment'
+              exit 1
+            }
+          }
+          $privateGitHubPrefix = "https://github.com/$env:GITHUB_REPOSITORY/"
+          if (($env:REPOSITORY_IS_PRIVATE -eq 'true') -and $baseUrl.StartsWith($privateGitHubPrefix)) {
+            Write-Error 'Private GitHub Release URLs cannot be used as the client update origin'
+            exit 1
+          }
+          if ($baseUrl -and $env:UPDATE_PUBLIC_KEY) {
+            "MIVIBE_APPCAST_URL=$baseUrl/windows-appcast.xml" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "MIVIBE_UPDATE_ED25519_PUBLIC_KEY=$env:UPDATE_PUBLIC_KEY" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            Write-Host 'External update origin or public key is not configured; building with updates safely disabled.'
+          }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -86,7 +176,7 @@ jobs:
         shell: pwsh
         run: >
           .\delivery\build-standalone-packages.ps1
-          -Version 0.1.15
+          -Version 0.1.16
           -Product xiaomi
           -AllowUnsignedCandidate
       - name: Upload Windows candidate

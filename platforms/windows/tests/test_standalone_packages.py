@@ -34,11 +34,24 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertNotIn("from bridges.t1", text)
         self.assertNotIn("from bridges.hanvon", text)
 
+    def test_xiaomi_host_exposes_and_cleans_up_online_updates(self) -> None:
+        text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
+        self.assertIn("WinSparkleUpdater", text)
+        self.assertIn('text="检查更新"', text)
+        self.assertIn('pystray.MenuItem("检查更新"', text)
+        self.assertIn("self.root.after(1500, self._start_updater)", text)
+        self.assertIn("self.updater.cleanup()", text)
+        self.assertIn("self._request_update_shutdown", text)
+        self.assertIn("MainThreadShutdownBridge", text)
+        self.assertIn("self._update_shutdown.request_and_wait()", text)
+        self.assertIn("self._update_shutdown.dispatch_one(", text)
+        self.assertIn("if not for_update:", text)
+
     def test_default_build_only_targets_mivibe_remote(self) -> None:
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.15"', text)
+        self.assertIn('[string] $Version = "0.1.16"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -77,6 +90,17 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("KEYEVENTF_SCANCODE = 0x0008", text)
         self.assertIn("def send_scan_code_hotkey", text)
         self.assertIn("KEYBDINPUT(0, scan, flags, 0, 0)", text)
+
+    def test_xiaomi_voice_shortcut_uses_checked_scan_code_sender(self) -> None:
+        text = (
+            SOURCE / "bridges" / "xiaomi" / "atvv_live_bridge.py"
+        ).read_text(encoding="utf-8")
+        voice_shortcut = text.split("class VoiceShortcut:", 1)[1].split(
+            "class VoicePcmStats:", 1
+        )[0]
+
+        self.assertIn("send_scan_code_vk", voice_shortcut)
+        self.assertNotIn("keybd_event", voice_shortcut)
 
     def test_xiaomi_installer_does_not_change_global_microphone_or_privacy(self) -> None:
         text = (
@@ -170,6 +194,51 @@ class StandalonePackageTests(unittest.TestCase):
         ):
             self.assertIn(module, spec)
             self.assertIn(module, build)
+
+    def test_xiaomi_package_pins_winsparkle_and_generated_public_config(self) -> None:
+        fetch = (ROOT / "scripts" / "fetch-third-party.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        spec = (SOURCE / "XiaomiRemoteBridge.spec").read_text(encoding="utf-8")
+        build = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        updater = (SOURCE / "standalone" / "windows_update.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("WinSparkle-0.9.4.zip", fetch)
+        self.assertIn(
+            "6037DF37FC263BD1650A1C4949681A9D40FFE991D01F35892A406CB5D103C976",
+            fetch,
+        )
+        self.assertIn(
+            "9B43B1C16EE39FB9A91B5BD75138767898779510E0836BE2919250607CDBE8AB",
+            fetch,
+        )
+        self.assertIn('(str(winsparkle_dll), ".")', spec)
+        self.assertIn('(str(update_config), "update")', spec)
+        self.assertIn("MIVIBE_APPCAST_URL", build)
+        self.assertIn("MIVIBE_UPDATE_ED25519_PUBLIC_KEY", build)
+        self.assertIn("must decode to a 32-byte Ed25519 public key", build)
+        self.assertIn("exactly one WinSparkle.dll", build)
+        self.assertIn("unexpected WinSparkle.dll", build)
+        self.assertIn("exactly one generated update_config.json", build)
+        self.assertNotIn("win_sparkle_set_http_header", updater)
+
+    def test_xiaomi_online_update_is_an_in_place_driver_safe_upgrade(self) -> None:
+        product = (SETUP / "XiaomiRemoteBridgeSetup.iss").read_text(encoding="utf-8")
+        common = (SETUP / "StandaloneBridgeSetup.common.iss").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '#define SetupAppId "{{C87B7439-E849-47B9-A3AC-B35AC7986CE4}"',
+            product,
+        )
+        self.assertIn("UsePreviousAppDir=yes", common)
+        self.assertIn("UsePreviousTasks=yes", common)
+        self.assertIn("HasCommandLineSwitch('/UPDATED')", common)
+        self.assertIn("Check: not IsOnlineUpdate", common)
+        self.assertIn("ShouldLaunchApplication", common)
 
     def test_specs_do_not_cross_ship_other_hardware_bridges(self) -> None:
         expected = {

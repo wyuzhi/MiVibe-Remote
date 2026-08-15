@@ -10,10 +10,19 @@ let package = Package(
             targets: ["RemoteMic"]
         )
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/sparkle-project/Sparkle",
+            exact: "2.9.4"
+        ),
+    ],
     targets: [
         .executableTarget(
             name: "RemoteMic",
-            dependencies: ["ObjCExceptionCatcher"],
+            dependencies: [
+                "ObjCExceptionCatcher",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/RemoteMic"
         ),
         .target(
