@@ -34,16 +34,18 @@ python3 -m pip install -r scripts/requirements-updates.txt
 - macOS 的 `MIVIBE_APPCAST_URL` 指向 `macos-appcast.xml`
 - Windows 的 `MIVIBE_APPCAST_URL` 指向 `windows-appcast.xml`
 
-发布时会校验二者是否匹配；不匹配或缺少 Secret 时，tag 的更新源发布 job
-会明确失败，安装包也不会在缺少公钥的 tag 构建中产生，绝不会降级为无签名
-更新。普通 PR 测试不需要私钥，客户端会在未配置公钥时禁用更新功能。
+发布时会校验二者是否匹配；只配置其中一项或两项都未配置时，仍可生成供用户
+手工安装的 Release 安装包，但客户端会安全禁用自动更新，绝不会降级为无
+签名更新。普通 PR 测试也不需要私钥。
 
 ## 外部更新源（正式发布必需）
 
 源码仓库是私有仓库。私有 GitHub Release 的固定 URL 对没有 GitHub Token 的
 Sparkle/WinSparkle 客户端会返回 404，因此构建不再回退到 GitHub Release
-地址。正式 tag 构建缺少外部 `UPDATE_BASE_URL` 或公钥时会直接失败；PR/main
-构建缺少任意一项时会安全禁用更新功能。
+地址。tag、PR 和 main 构建缺少外部 `UPDATE_BASE_URL` 或公钥中的任意一项
+时会安全禁用更新功能。没有配置 `UPDATE_BASE_URL` 的正式 Release 会跳过
+稳定 feed 推广；一旦配置并启用推广，仍然要求完整的外部更新源、公私钥与
+存储配置，缺少任何一项都会失败。
 
 当前客户端不会携带会员令牌，所以 `UPDATE_BASE_URL`、两个 appcast 和其引用
 的安装包必须能由已安装客户端直接通过 HTTPS 读取。若要按会员鉴权下载，必须
