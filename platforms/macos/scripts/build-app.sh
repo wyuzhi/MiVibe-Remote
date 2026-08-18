@@ -17,8 +17,8 @@ fi
 
 cd "$ROOT"
 
-xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx26.0
-BIN_PATH="$(xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx26.0 --show-bin-path)/$APP_NAME"
+xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx15.0
+BIN_PATH="$(xcrun swift build -c "$CONFIGURATION" --triple arm64-apple-macosx15.0 --show-bin-path)/$APP_NAME"
 SPARKLE_FRAMEWORK="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
 if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
@@ -124,7 +124,7 @@ if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   SIGN_TIMESTAMP=(--timestamp=none)
   # Hardened Runtime library validation requires every loaded framework to
   # carry the same real Developer ID team. An ad-hoc signature has no team,
-  # so enabling runtime here makes dyld reject Sparkle at launch on macOS 26.
+  # so enabling runtime here makes dyld reject Sparkle at launch.
   # Local builds remain fully code-signed, but Hardened Runtime is reserved
   # for production builds signed with a Developer ID identity.
   SIGN_OPTIONS=()

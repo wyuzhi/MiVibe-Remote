@@ -44,7 +44,7 @@ test -x "$SPARKLE/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloade
 test "$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")" = \
   "com.mivibe.remote"
 test "$(plutil -extract LSUIElement raw -o - "$PLIST")" = "false"
-test "$(plutil -extract LSMinimumSystemVersion raw -o - "$PLIST")" = "26.0"
+test "$(plutil -extract LSMinimumSystemVersion raw -o - "$PLIST")" = "15.0"
 test "$(plutil -extract CFBundleIconFile raw -o - "$PLIST")" = "AppIcon"
 test -n "$(plutil -extract NSBluetoothAlwaysUsageDescription raw -o - "$PLIST")"
 test "$(plutil -extract SUEnableAutomaticChecks raw -o - "$PLIST")" = "true"
@@ -80,7 +80,30 @@ fi
 file "$BINARY" | rg -q 'Mach-O 64-bit executable'
 ARCHS="$(lipo -archs "$BINARY")"
 test "$ARCHS" = "arm64"
-xcrun vtool -show-build "$BINARY" | rg -q 'minos 26\.0'
+xcrun vtool -show-build "$BINARY" | rg -q 'minos 15\.0'
+
+verify_runs_on_macos_15() {
+  local executable="$1"
+  local minos
+  local major
+  local minor
+  minos="$(xcrun vtool -show-build "$executable" | awk '$1 == "minos" { print $2; exit }')"
+  test -n "$minos"
+  major="${minos%%.*}"
+  minor="${${minos#*.}%%.*}"
+  if (( major > 15 || (major == 15 && minor > 0) )); then
+    print -u2 "$executable requires macOS $minos, newer than the supported macOS 15.0"
+    exit 1
+  fi
+}
+
+verify_runs_on_macos_15 "$BINARY"
+verify_runs_on_macos_15 "$SPARKLE/Versions/B/Sparkle"
+verify_runs_on_macos_15 "$SPARKLE/Versions/B/Autoupdate"
+verify_runs_on_macos_15 "$SPARKLE/Versions/B/Updater.app/Contents/MacOS/Updater"
+verify_runs_on_macos_15 "$SPARKLE/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+verify_runs_on_macos_15 "$SPARKLE/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+
 otool -L "$BINARY" | rg -q '@rpath/Sparkle\.framework/Versions/B/Sparkle'
 otool -l "$BINARY" | rg -q '@executable_path/\.\./Frameworks'
 

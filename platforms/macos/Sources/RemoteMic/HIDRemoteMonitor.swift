@@ -50,6 +50,9 @@ final class HIDRemoteMonitor {
     private var doubleClickTimers: [RemoteButton: DispatchSourceTimer] = [:]
     private var longPressTimers: [RemoteButton: DispatchSourceTimer] = [:]
     private var permissionMonitor: DispatchSourceTimer?
+    private var hardwareSuppressionRetryTimer: DispatchSourceTimer?
+    private var hardwareSuppressionRetryAttempt = 0
+    private var hardwareSuppressionRetryGeneration: UInt64 = 0
     private(set) var status = "按键映射未启用"
     var onStatus: ((String) -> Void)?
     var onActiveButtons: ((Set<RemoteButton>) -> Void)?
@@ -134,6 +137,7 @@ final class HIDRemoteMonitor {
     func stop() {
         permissionMonitor?.cancel()
         permissionMonitor = nil
+        cancelHardwareSuppressionRetry()
         repeatTimers.values.forEach { $0.cancel() }
         repeatTimers.removeAll()
         resetGestureRecognition()
@@ -190,7 +194,8 @@ final class HIDRemoteMonitor {
         if takeoverMode.canInjectMappedActions {
             updateStatus("小米遥控器按键映射已连接（设备级接管）")
         } else {
-            updateStatus("无法安全接管小米遥控器；按键由 macOS 原生处理")
+            updateStatus("正在重新接管小米遥控器按键")
+            scheduleHardwareSuppressionRetry()
         }
         AppLogger.shared.write(
             "HID CONNECTED mode=monitored seize_error=\(seizeResult) " +
@@ -200,6 +205,7 @@ final class HIDRemoteMonitor {
 
     fileprivate func deviceDidRemove(device: IOHIDDevice) {
         guard let activeDevice, CFEqual(activeDevice, device) else { return }
+        cancelHardwareSuppressionRetry()
         IOHIDDeviceClose(activeDevice, IOOptionBits(kIOHIDOptionsTypeNone))
         self.activeDevice = nil
         takeoverMode = .nativeOnly
@@ -210,6 +216,83 @@ final class HIDRemoteMonitor {
         resetGestureRecognition()
         updateStatus("小米遥控器按键设备已断开")
         AppLogger.shared.write("HID DISCONNECTED")
+    }
+
+    private func scheduleHardwareSuppressionRetry() {
+        hardwareSuppressionRetryTimer?.cancel()
+        hardwareSuppressionRetryTimer = nil
+        guard manager != nil,
+              activeDevice != nil,
+              takeoverMode == .nativeOnly,
+              let delay = HIDHardwareSuppressionRetryPolicy.delay(
+                  afterFailedAttempt: hardwareSuppressionRetryAttempt
+              )
+        else {
+            updateStatus("无法安全接管小米遥控器；按键由 macOS 原生处理")
+            AppLogger.shared.write(
+                "HID HARDWARE_SUPPRESSION retry_exhausted " +
+                    "attempts=\(hardwareSuppressionRetryAttempt)"
+            )
+            return
+        }
+
+        hardwareSuppressionRetryAttempt += 1
+        let attempt = hardwareSuppressionRetryAttempt
+        let generation = hardwareSuppressionRetryGeneration
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + delay)
+        timer.setEventHandler { [weak self] in
+            guard let self,
+                  self.hardwareSuppressionRetryGeneration == generation
+            else { return }
+            self.hardwareSuppressionRetryTimer?.cancel()
+            self.hardwareSuppressionRetryTimer = nil
+            self.retryHardwareSuppression(attempt: attempt)
+        }
+        hardwareSuppressionRetryTimer = timer
+        timer.resume()
+        AppLogger.shared.write(
+            "HID HARDWARE_SUPPRESSION retry_scheduled attempt=\(attempt) " +
+                "delay_ms=\(Int(delay * 1_000))"
+        )
+    }
+
+    private func retryHardwareSuppression(attempt: Int) {
+        guard manager != nil,
+              activeDevice != nil,
+              takeoverMode == .nativeOnly,
+              settings.customMappingEnabled
+        else { return }
+        guard runtimePermissionsAreValid() else {
+            releaseForRevokedPermissions()
+            return
+        }
+
+        guard ensureHardwareSuppression?() == true else {
+            updateStatus("正在重新接管小米遥控器按键（第 \(attempt) 次）")
+            AppLogger.shared.write(
+                "HID HARDWARE_SUPPRESSION retry_failed attempt=\(attempt)"
+            )
+            scheduleHardwareSuppressionRetry()
+            return
+        }
+
+        hardwareSuppressionRetryAttempt = 0
+        activeUsages.removeAll()
+        onActiveButtons?([])
+        resetGestureRecognition()
+        takeoverMode = .deviceSuppressed
+        updateStatus("小米遥控器按键映射已连接（自动恢复）")
+        AppLogger.shared.write(
+            "HID HARDWARE_SUPPRESSION retry_recovered attempt=\(attempt)"
+        )
+    }
+
+    private func cancelHardwareSuppressionRetry() {
+        hardwareSuppressionRetryGeneration &+= 1
+        hardwareSuppressionRetryTimer?.cancel()
+        hardwareSuppressionRetryTimer = nil
+        hardwareSuppressionRetryAttempt = 0
     }
 
     fileprivate func handleReport(reportID: UInt32, data: Data) {

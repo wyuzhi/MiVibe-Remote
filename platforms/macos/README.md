@@ -26,7 +26,7 @@ MiVibe Remote 的增量：
 ## 构建要求
 
 - Apple Silicon Mac；
-- macOS 26 或更高版本；
+- macOS 15 或更高版本；macOS 26 使用原生 Liquid Glass，macOS 15 使用材质降级样式；
 - Xcode / Command Line Tools 26.5 或更高版本，Swift 6.2；
 - 构建完整语音安装包时还需构建 BlackHole 派生的 `MiRemoteV 2ch`。
 

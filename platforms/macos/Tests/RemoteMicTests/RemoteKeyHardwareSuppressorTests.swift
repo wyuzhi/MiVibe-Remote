@@ -117,6 +117,21 @@ struct RemoteKeyHardwareSuppressorTests {
         #expect(!HIDTakeoverMode.nativeOnly.canInjectMappedActions)
     }
 
+    @Test func reconnectRetryUsesBoundedBackoffLongEnoughForHIDEnumeration() {
+        #expect(HIDHardwareSuppressionRetryPolicy.delays == [
+            0.25, 0.5, 1, 2, 4, 8, 8,
+        ])
+        for (attempt, delay) in HIDHardwareSuppressionRetryPolicy.delays.enumerated() {
+            #expect(
+                HIDHardwareSuppressionRetryPolicy.delay(afterFailedAttempt: attempt) == delay
+            )
+        }
+        #expect(HIDHardwareSuppressionRetryPolicy.delay(
+            afterFailedAttempt: HIDHardwareSuppressionRetryPolicy.delays.count
+        ) == nil)
+        #expect(HIDHardwareSuppressionRetryPolicy.delays.reduce(0, +) > 20)
+    }
+
     @Test func parsesHIDUtilNullEmptyAndPopulatedMappingOutput() {
         let nullOutput = """
         RegistryID  Key                   Value
