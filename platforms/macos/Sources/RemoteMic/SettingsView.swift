@@ -214,7 +214,7 @@ struct SettingsView: View {
                     subtitle: "三个项目全部就绪后，就可以直接用遥控器操作 \(settings.voiceShortcutProfile.displayName)"
                 )
 
-                GlassEffectContainer(spacing: 14) {
+                AdaptiveGlassEffectContainer(spacing: 14) {
                     HStack(alignment: .top, spacing: 14) {
                         connectionDevicePanel
                             .frame(width: 196)
@@ -226,7 +226,7 @@ struct SettingsView: View {
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .adaptiveSoftTopScrollEdge()
     }
 
     private var connectionDevicePanel: some View {
@@ -275,7 +275,7 @@ struct SettingsView: View {
                     Text("重新连接遥控器")
                         .foregroundStyle(.white)
                 }
-                    .buttonStyle(.glassProminent)
+                    .adaptiveProminentGlassButtonStyle()
                     .buttonBorderShape(.roundedRectangle(radius: 10))
                     .frame(maxWidth: .infinity)
             }
@@ -368,14 +368,14 @@ struct SettingsView: View {
                                 model.refreshAudioDevices()
                                 model.selectDoubaoAudioDevice()
                             }
-                            .buttonStyle(.glassProminent)
+                            .adaptiveProminentGlassButtonStyle()
                             .disabled(!model.hasDoubaoAudioDevice)
                             Button("测试音频通道") { model.sendTestTone() }
-                                .buttonStyle(.glass)
+                                .adaptiveGlassButtonStyle()
                                 .disabled(!model.canSendTestTone)
                             if !model.hasDoubaoAudioDevice {
                                 Button("驱动安装说明") { model.openDoubaoDriverInstructions() }
-                                    .buttonStyle(.glass)
+                                    .adaptiveGlassButtonStyle()
                             }
                         }
 
@@ -428,14 +428,14 @@ struct SettingsView: View {
                         settings.resetBindings()
                         selectedRemoteButton = .ok
                     }
-                    .buttonStyle(.glass)
+                    .adaptiveGlassButtonStyle()
                     presetButton(.codex)
                     presetButton(.workBuddy)
                     presetButton(.weChat)
                 }
             }
 
-            GlassEffectContainer(spacing: 14) {
+            AdaptiveGlassEffectContainer(spacing: 14) {
                 HStack(alignment: .top, spacing: 14) {
                     GlassPanel {
                         RemoteControlDiagram(
@@ -567,9 +567,10 @@ struct SettingsView: View {
 
         if selected {
             content
-                .glassEffect(
-                    .clear.tint(Color.accentColor.opacity(0.10)).interactive(),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .adaptiveTintedGlassRounded(
+                    cornerRadius: 12,
+                    tint: Color.accentColor.opacity(0.10),
+                    interactive: true
                 )
         } else {
             VStack(spacing: 0) {
@@ -670,7 +671,7 @@ struct SettingsView: View {
                     subtitle: "按顺序完成权限设置，确保小米遥控器正常连接和发送按键"
                 )
 
-                GlassEffectContainer(spacing: 14) {
+                AdaptiveGlassEffectContainer(spacing: 14) {
                     GlassPanel {
                         VStack(alignment: .leading, spacing: 0) {
                             Text("所需权限")
@@ -740,10 +741,7 @@ struct SettingsView: View {
                                     .font(.title3)
                                     .foregroundStyle(Color.accentColor)
                                     .frame(width: 34, height: 34)
-                                    .glassEffect(
-                                        .clear.tint(Color.accentColor.opacity(0.14)),
-                                        in: Circle()
-                                    )
+                                    .adaptiveTintedGlassCircle(Color.accentColor.opacity(0.14))
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("应用日志")
                                     Text("日志不记录语音内容、蓝牙地址或外设 UUID。")
@@ -752,7 +750,7 @@ struct SettingsView: View {
                                 }
                                 Spacer()
                                 Button("在 Finder 中显示日志") { model.openLogFolder() }
-                                    .buttonStyle(.glass)
+                                    .adaptiveGlassButtonStyle()
                             }
                         }
                     }
@@ -761,7 +759,7 @@ struct SettingsView: View {
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .adaptiveSoftTopScrollEdge()
     }
 
     private func permissionRow(
@@ -784,10 +782,7 @@ struct SettingsView: View {
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 42, height: 42)
-                .glassEffect(
-                    .clear.tint(Color.accentColor.opacity(0.14)),
-                    in: Circle()
-                )
+                .adaptiveTintedGlassCircle(Color.accentColor.opacity(0.14))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -801,7 +796,7 @@ struct SettingsView: View {
             Spacer(minLength: 16)
             StatusPill(text: state.title, tint: state.tint)
             Button(actionTitle, action: action)
-                .buttonStyle(.glass)
+                .adaptiveGlassButtonStyle()
                 .frame(width: 112)
         }
         .padding(.vertical, 12)
@@ -878,10 +873,10 @@ struct SettingsView: View {
             Button(action: action) {
                 Label("\(preset.displayName) 已启用", systemImage: "checkmark.circle.fill")
             }
-            .buttonStyle(.glassProminent)
+            .adaptiveProminentGlassButtonStyle()
         } else {
             Button("\(preset.displayName) 预设", action: action)
-                .buttonStyle(.glass)
+                .adaptiveGlassButtonStyle()
         }
     }
 
@@ -1048,10 +1043,7 @@ private struct GlassPanel<Content: View>: View {
     var body: some View {
         content
             .padding(16)
-            .glassEffect(
-                .regular,
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-            )
+            .adaptiveRegularGlassRounded(cornerRadius: 20)
     }
 }
 
@@ -1065,7 +1057,7 @@ private struct StatusPill: View {
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .glassEffect(.clear.tint(tint.opacity(0.14)), in: Capsule())
+            .adaptiveTintedGlassCapsule(tint.opacity(0.14))
     }
 }
 
@@ -1082,7 +1074,7 @@ private struct DeviceStatusStep: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 28, height: 28)
-                .glassEffect(.clear.tint(tint.opacity(0.14)), in: Circle())
+                .adaptiveTintedGlassCircle(tint.opacity(0.14))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title)
@@ -1112,7 +1104,7 @@ private struct SetupStatusRow: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 40, height: 40)
-                .glassEffect(.clear.tint(tint.opacity(0.14)), in: Circle())
+                .adaptiveTintedGlassCircle(tint.opacity(0.14))
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.headline)

@@ -6,14 +6,14 @@
 
 ## 支持范围
 
-- 运行系统：macOS 26 或更高版本；
+- 运行系统：macOS 15 或更高版本；
 - 架构：Apple Silicon `arm64`；
 - 目标遥控器：小米蓝牙遥控器 2；本机 macOS 内部型号显示为 RC001；
 - HID 标识：Vendor ID `0x2717`、Product ID `0x32B8`；
 - Swift 工具链：Swift 6.2，源码以 Swift 5 语言模式编译；
 - 发布签名：应用默认使用带固定 designated requirement 的 ad-hoc 签名；仅在显式传入有效签名身份时使用该身份。驱动使用 ad-hoc 签名，PKG 未使用 Installer 证书签名，当前未公证。
 
-`Package.swift`、`Resources/Info.plist`、构建脚本和验证脚本都把最低系统版本固定为 macOS 26，并验证发布二进制只有 `arm64` 架构。
+`Package.swift`、`Resources/Info.plist`、构建脚本和验证脚本都把最低系统版本固定为 macOS 15，并验证发布二进制只有 `arm64` 架构。macOS 26 使用原生 Liquid Glass；macOS 15–15.x 通过统一兼容层使用系统材质、描边和标准按钮样式。
 
 ## 模块结构
 
@@ -21,7 +21,8 @@
 | --- | --- |
 | `RemoteMicApp.swift` | AppKit 生命周期、菜单栏图标、主应用菜单、右键菜单、关于与版本菜单项、Sparkle 更新入口 |
 | `AppUpdater.swift` | 安全校验更新配置、持有 Sparkle updater controller、定时检查和用户主动检查 |
-| `SettingsView.swift` | macOS 26 Liquid Glass 设置界面、状态展示、音频选择、按键映射和权限入口 |
+| `SettingsView.swift` | 自适应设置界面、状态展示、音频选择、按键映射和权限入口 |
+| `CompatibilityStyles.swift` | macOS 26 Liquid Glass 与 macOS 15 系统材质降级样式 |
 | `BridgeAppModel.swift` | 蓝牙、音频、HID、Codex / WorkBuddy / 微信语音和 UI 状态的协调层 |
 | `XiaomiBluetoothBridge.swift` | CoreBluetooth 扫描、连接、能力协商、语音会话和自动重连 |
 | `ATVVProtocol.swift` | ATVV 命令、能力解析、IMA/DVI ADPCM 解码、帧累积与 PCM 后处理 |
@@ -109,7 +110,7 @@ Codex 预设在小米遥控器开始发送 ATVV 音频时按下 `⌃⇧D`。松�
 - 左键：创建或置前 800×650 的可缩放设置窗口；
 - 右键：显示连接、音频、HID 状态，以及重新连接、打开设置、日志、关于、版本号、检查更新、GitHub 和退出菜单。
 
-设置窗口包含“连接”“按键”“权限”三个页面，使用 macOS 26 原生 `glassEffect` 和 glass button style，并跟随系统浅色、深色、降低透明度与增强对比度设置。
+设置窗口包含“连接”“按键”“权限”三个页面。macOS 26 使用原生 `glassEffect` 和 glass button style；macOS 15 使用 `regularMaterial`、标准按钮与轻量描边，并同样跟随系统浅色、深色、降低透明度与增强对比度设置。
 
 ## 数据与日志
 
@@ -165,7 +166,7 @@ DMG 根目录严格只有四项：
 - `无线麦.app`；
 - 指向 `/Applications` 的 `Applications` 入口。
 
-`verify-dmg.sh` 校验 SHA-256、HFS+ 镜像、根目录清单、应用 bundle 内容、PKG payload、版本号、`arm64` 架构、macOS 26 最低版本、有效代码签名和本地路径泄漏。
+`verify-dmg.sh` 校验 SHA-256、HFS+ 镜像、根目录清单、应用 bundle 内容、PKG payload、版本号、`arm64` 架构、macOS 15 最低版本、有效代码签名和本地路径泄漏。
 
 Sparkle `2.9.4` 作为精确版本 SwiftPM 依赖嵌入应用。构建脚本只接受
 `MIVIBE_APPCAST_URL` 和 `MIVIBE_UPDATE_ED25519_PUBLIC_KEY`，并在两者同时有效时把更新源与

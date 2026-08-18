@@ -64,7 +64,7 @@ struct AboutView: View {
             .frame(maxWidth: 900, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .adaptiveSoftTopScrollEdge()
         .background {
             LinearGradient(
                 colors: [Color.accentColor.opacity(0.08), Color.clear],
@@ -106,7 +106,7 @@ struct AboutView: View {
                     Button("检查更新…", systemImage: "arrow.triangle.2.circlepath") {
                         onCheckForUpdates()
                     }
-                    .buttonStyle(.glass)
+                    .adaptiveGlassButtonStyle()
                     .disabled(!updatesConfigured)
                     .help(
                         updatesConfigured
@@ -131,10 +131,7 @@ struct AboutView: View {
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 42, height: 42)
-                    .glassEffect(
-                        .clear.tint(Color.accentColor.opacity(0.14)),
-                        in: Circle()
-                    )
+                    .adaptiveTintedGlassCircle(Color.accentColor.opacity(0.14))
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -165,7 +162,7 @@ struct AboutView: View {
                         systemImage: copiedWeChatID ? "checkmark" : "doc.on.doc"
                     )
                 }
-                .buttonStyle(.glassProminent)
+                .adaptiveProminentGlassButtonStyle()
                 .buttonBorderShape(.roundedRectangle(radius: 10))
                 .accessibilityLabel(copiedWeChatID ? "微信号已复制" : "复制微信号 wydyid")
             }
@@ -264,10 +261,7 @@ private struct AboutSurface<Content: View>: View {
     var body: some View {
         content
             .padding(18)
-            .glassEffect(
-                .regular,
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-            )
+            .adaptiveRegularGlassRounded(cornerRadius: 20)
     }
 }
 
@@ -326,7 +320,7 @@ private struct AboutSocialCard: View {
                     Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .adaptiveGlassButtonStyle()
                 .disabled(resourceImage == nil)
                 .accessibilityLabel("查看\(platform)联系图片大图")
             }

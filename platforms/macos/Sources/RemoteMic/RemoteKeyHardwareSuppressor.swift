@@ -157,6 +157,19 @@ enum HIDTakeoverMode: Equatable {
     }
 }
 
+enum HIDHardwareSuppressionRetryPolicy {
+    /// A reconnect can publish the raw HID device before its
+    /// AppleUserHIDEventService is visible to `hidutil`. Retry for long enough
+    /// to cover that asynchronous enumeration instead of leaving the app in
+    /// native-only mode until it is restarted.
+    static let delays: [TimeInterval] = [0.25, 0.5, 1, 2, 4, 8, 8]
+
+    static func delay(afterFailedAttempt attempt: Int) -> TimeInterval? {
+        guard delays.indices.contains(attempt) else { return nil }
+        return delays[attempt]
+    }
+}
+
 enum HIDUtilMappingOutputParser {
     static func mappings(from output: String) -> [HIDUsageMapping]? {
         guard output.contains("UserKeyMapping") else { return nil }

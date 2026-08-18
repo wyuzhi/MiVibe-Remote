@@ -3,6 +3,46 @@ import Testing
 
 @Suite("Build signing")
 struct BuildSigningTests {
+    @Test func releaseArtifactsSupportMacOS15WithAdaptiveMacOS26Styling() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let package = try String(
+            contentsOf: root.appendingPathComponent("Package.swift"),
+            encoding: .utf8
+        )
+        let buildApp = try String(
+            contentsOf: root.appendingPathComponent("scripts/build-app.sh"),
+            encoding: .utf8
+        )
+        let verifyApp = try String(
+            contentsOf: root.appendingPathComponent("scripts/verify-app.sh"),
+            encoding: .utf8
+        )
+        let buildDriver = try String(
+            contentsOf: root.appendingPathComponent("scripts/build-doubao-driver.sh"),
+            encoding: .utf8
+        )
+        let compatibilityStyles = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/RemoteMic/CompatibilityStyles.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(package.contains("platforms: [.macOS(.v15)]"))
+        #expect(buildApp.contains("arm64-apple-macosx15.0"))
+        #expect(verifyApp.contains("minos 15\\.0"))
+        #expect(verifyApp.contains("verify_runs_on_macos_15"))
+        #expect(verifyApp.contains("newer than the supported macOS 15.0"))
+        #expect(buildDriver.contains("MACOSX_DEPLOYMENT_TARGET=15.0"))
+        #expect(buildDriver.contains("-mmacosx-version-min=15.0"))
+        #expect(compatibilityStyles.contains("#available(macOS 26.0, *)"))
+        #expect(compatibilityStyles.contains("buttonStyle(.bordered)"))
+        #expect(compatibilityStyles.contains("background(.regularMaterial"))
+    }
+
     @Test func buildDefaultsToStableAdHocSigning() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

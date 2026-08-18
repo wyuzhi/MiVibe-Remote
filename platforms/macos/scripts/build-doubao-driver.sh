@@ -52,7 +52,7 @@ if xcodebuild -version >/dev/null 2>&1; then
     -sdk macosx \
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=NO \
-    MACOSX_DEPLOYMENT_TARGET=26.0 \
+    MACOSX_DEPLOYMENT_TARGET=15.0 \
     CODE_SIGNING_ALLOWED=NO \
     PRODUCT_NAME="$PRODUCT_NAME" \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
@@ -68,7 +68,7 @@ else
   mkdir -p "$OUTPUT/Contents/MacOS" "$OUTPUT/Contents/Resources"
   xcrun clang \
     -arch arm64 \
-    -mmacosx-version-min=26.0 \
+    -mmacosx-version-min=15.0 \
     -Os \
     -bundle \
     -DDEBUG=0 \
