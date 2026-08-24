@@ -1,0 +1,132 @@
+name: Prepare MiVibe website update bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published stable release tag, for example v0.1.18
+        required: true
+        type: string
+      confirmation:
+        description: Type PREPARE_WEBSITE_UPDATE
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Sign website update bundle
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+      UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_ED25519_PUBLIC_KEY }}
+    steps:
+      - name: Require explicit confirmation
+        run: |
+          if [[ "${{ inputs.confirmation }}" != PREPARE_WEBSITE_UPDATE ]]; then
+            echo "::error::Confirmation must be PREPARE_WEBSITE_UPDATE"
+            exit 1
+          fi
+
+      - name: Require signed public update configuration
+        env:
+          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_ED25519_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          for required in RELEASE_TAG UPDATE_BASE_URL UPDATE_PUBLIC_KEY UPDATE_PRIVATE_KEY_BASE64; do
+            if [[ -z "${!required}" ]]; then
+              echo "::error::Missing update setting: $required"
+              exit 1
+            fi
+          done
+          if [[ "$RELEASE_TAG" != v* || "$UPDATE_BASE_URL" != https://* ]]; then
+            echo "::error::Release tag or HTTPS update origin is invalid"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-updates.txt
+
+      - name: Install update tooling
+        run: python -m pip install -r scripts/requirements-updates.txt
+
+      - name: Resolve and download exact release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p updates/release updates/dist updates/bundle
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,publishedAt,assets \
+            > updates/release.json
+          test "$(jq -r .isDraft updates/release.json)" = false
+          test "$(jq -r .isPrerelease updates/release.json)" = false
+          python scripts/validate_update_promotion.py expected-assets \
+            --release-tag "$RELEASE_TAG" \
+            --mac-plist platforms/macos/Resources/Info.plist \
+            --output updates/promotion-metadata.json
+          jq -r '.assets[].name' updates/release.json > updates/release-asset-names.txt
+          python scripts/validate_update_promotion.py check-release-assets \
+            --metadata updates/promotion-metadata.json \
+            --asset-names updates/release-asset-names.txt
+          mac_filename="$(jq -r .macFilename updates/promotion-metadata.json)"
+          windows_filename="$(jq -r .windowsFilename updates/promotion-metadata.json)"
+          gh release download "$RELEASE_TAG" --dir updates/release \
+            --pattern "$mac_filename" \
+            --pattern "$mac_filename.sha256" \
+            --pattern "$windows_filename" \
+            --pattern "$windows_filename.sha256"
+          python scripts/validate_update_promotion.py check-local-assets \
+            --metadata updates/promotion-metadata.json \
+            --directory updates/release
+
+      - name: Generate Ed25519-signed appcasts
+        env:
+          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_ED25519_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key_file="$(mktemp)"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | base64 --decode > "$key_file"
+          mac_filename="$(jq -r .macFilename updates/promotion-metadata.json)"
+          windows_filename="$(jq -r .windowsFilename updates/promotion-metadata.json)"
+          python scripts/generate_appcasts.py \
+            --mac-asset "updates/release/$mac_filename" \
+            --windows-asset "updates/release/$windows_filename" \
+            --private-key-file "$key_file" \
+            --expected-public-key "$UPDATE_PUBLIC_KEY" \
+            --base-url "${UPDATE_BASE_URL%/}" \
+            --published-at "$(jq -r .publishedAt updates/release.json)" \
+            --mac-build-version "$(jq -r .macBuildVersion updates/promotion-metadata.json)" \
+            --output-dir updates/dist
+          cp updates/release/* updates/bundle/
+          cp updates/dist/macos-appcast.xml updates/bundle/
+          cp updates/dist/windows-appcast.xml updates/bundle/
+          cp updates/dist/update-manifest.json updates/bundle/
+
+      - name: Verify signed bundle
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          test "$(find updates/bundle -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 1
+          test "$(find updates/bundle -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 1
+          test -s updates/bundle/macos-appcast.xml
+          test -s updates/bundle/windows-appcast.xml
+
+      - name: Upload website update bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mivibe-website-update-${{ inputs.release_tag }}
+          path: updates/bundle/
+          if-no-files-found: error
+          retention-days: 14

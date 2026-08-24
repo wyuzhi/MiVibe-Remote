@@ -30,7 +30,8 @@ jobs:
       (github.event.release.draft == false &&
        github.event.release.prerelease == false &&
        startsWith(github.event.release.tag_name, 'v') &&
-       vars.UPDATE_BASE_URL != '')
+       vars.UPDATE_BASE_URL != '' &&
+       vars.UPDATE_PUBLISH_MODE == 's3')
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}

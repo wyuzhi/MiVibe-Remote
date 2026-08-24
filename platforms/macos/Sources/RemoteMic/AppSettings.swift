@@ -5,12 +5,14 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
     case codex
     case workBuddy
     case weChat
+    case custom
 
     var displayName: String {
         switch self {
         case .codex: return "Codex"
         case .workBuddy: return "WorkBuddy"
         case .weChat: return "微信"
+        case .custom: return "自定义"
         }
     }
 
@@ -19,6 +21,7 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
         case .codex: return "⌃⇧D"
         case .workBuddy: return "⌘D"
         case .weChat: return "Fn（按住）"
+        case .custom: return "用户快捷键"
         }
     }
 
@@ -27,6 +30,7 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
         case .codex: return "等待语音键；Codex 使用按住型 ⌃⇧D"
         case .workBuddy: return "等待语音键；WorkBuddy 使用开关型 ⌘D"
         case .weChat: return "等待语音键；微信使用按住 Fn 语音输入文字"
+        case .custom: return "等待语音键；使用用户自定义快捷键"
         }
     }
 
@@ -35,6 +39,44 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
             return Self.allCases[0]
         }
         return Self.allCases[(index + 1) % Self.allCases.count]
+    }
+}
+
+enum VoiceShortcutTriggerMode: String, CaseIterable, Codable, Equatable, Identifiable {
+    case hold
+    case toggle
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .hold: return "按住型"
+        case .toggle: return "开关型"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .hold: return "按住遥控器语音键时持续按下快捷键，松开时释放。"
+        case .toggle: return "按下和松开遥控器语音键时各点按一次快捷键。"
+        }
+    }
+}
+
+struct VoiceShortcutConfiguration: Equatable {
+    let profile: VoiceShortcutProfile
+    let customShortcut: CustomKeyboardShortcut?
+    let customTriggerMode: VoiceShortcutTriggerMode
+
+    var displayName: String {
+        guard profile == .custom else { return profile.shortcutDisplayName }
+        return customShortcut?.displayName ?? "尚未录入"
+    }
+
+    var readyStatus: String {
+        guard profile == .custom else { return profile.readyStatus }
+        guard let customShortcut else { return "请先录入自定义语音快捷键" }
+        return "等待语音键；\(customTriggerMode.displayName) \(customShortcut.displayName)"
     }
 }
 
@@ -49,6 +91,11 @@ final class AppSettings: ObservableObject {
         static let secondaryButtonBindings = "secondaryButtonBindings"
         static let peripheralIdentifier = "peripheralIdentifier"
         static let voiceShortcutProfile = "voiceShortcutProfile"
+        static let customVoiceShortcut = "customVoiceShortcut"
+        static let customVoiceTriggerMode = "customVoiceTriggerMode"
+        static let customPresetBindings = "customPresetBindings"
+        static let customPresetShortcuts = "customPresetShortcuts"
+        static let customPresetSecondaryBindings = "customPresetSecondaryBindings"
         static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
     }
 
@@ -70,6 +117,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
     }
 
+    @Published var customVoiceShortcut: CustomKeyboardShortcut? {
+        didSet { saveCustomVoiceShortcut() }
+    }
+
+    @Published var customVoiceTriggerMode: VoiceShortcutTriggerMode {
+        didSet { defaults.set(customVoiceTriggerMode.rawValue, forKey: Keys.customVoiceTriggerMode) }
+    }
+
     @Published var headsetCompatibilityEnabled: Bool {
         didSet { defaults.set(headsetCompatibilityEnabled, forKey: Keys.headsetCompatibilityEnabled) }
     }
@@ -85,6 +140,10 @@ final class AppSettings: ObservableObject {
     @Published var secondaryButtonBindings: [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] {
         didSet { saveSecondaryBindings() }
     }
+
+    private var customPresetBindings: [RemoteButton: ButtonAction]?
+    private var customPresetShortcuts: [RemoteButton: CustomKeyboardShortcut] = [:]
+    private var customPresetSecondaryBindings: [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] = [:]
 
     var peripheralIdentifier: UUID? {
         get {
@@ -112,6 +171,16 @@ final class AppSettings: ObservableObject {
         voiceShortcutProfile = defaults.string(forKey: Keys.voiceShortcutProfile)
             .flatMap(VoiceShortcutProfile.init(rawValue:))
             ?? .codex
+        customVoiceShortcut = defaults.data(forKey: Keys.customVoiceShortcut)
+            .flatMap { try? JSONDecoder().decode(CustomKeyboardShortcut.self, from: $0) }
+            ?? CustomKeyboardShortcut(
+                keyCode: 2,
+                modifierFlags: [.control, .shift],
+                keyLabel: "D"
+            )
+        customVoiceTriggerMode = defaults.string(forKey: Keys.customVoiceTriggerMode)
+            .flatMap(VoiceShortcutTriggerMode.init(rawValue:))
+            ?? .hold
         headsetCompatibilityEnabled = defaults.object(forKey: Keys.headsetCompatibilityEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.headsetCompatibilityEnabled)
@@ -160,6 +229,16 @@ final class AppSettings: ObservableObject {
         } else {
             secondaryButtonBindings = [:]
         }
+
+        customPresetBindings = Self.decodeBindings(
+            defaults.data(forKey: Keys.customPresetBindings)
+        )
+        customPresetShortcuts = Self.decodeShortcuts(
+            defaults.data(forKey: Keys.customPresetShortcuts)
+        )
+        customPresetSecondaryBindings = Self.decodeSecondaryBindings(
+            defaults.data(forKey: Keys.customPresetSecondaryBindings)
+        )
     }
 
     func action(for button: RemoteButton) -> ButtonAction {
@@ -168,6 +247,7 @@ final class AppSettings: ObservableObject {
 
     func setAction(_ action: ButtonAction, for button: RemoteButton) {
         buttonBindings[button] = action
+        saveCustomPresetIfActive()
     }
 
     func shortcut(for button: RemoteButton) -> CustomKeyboardShortcut? {
@@ -176,6 +256,7 @@ final class AppSettings: ObservableObject {
 
     func setShortcut(_ shortcut: CustomKeyboardShortcut?, for button: RemoteButton) {
         buttonShortcuts[button] = shortcut
+        saveCustomPresetIfActive()
     }
 
     func configuredAction(
@@ -206,6 +287,7 @@ final class AppSettings: ObservableObject {
             bindings[trigger] = ConfiguredButtonAction(action: action, shortcut: shortcut)
         }
         secondaryButtonBindings[button] = bindings.isEmpty ? nil : bindings
+        saveCustomPresetIfActive()
     }
 
     func setShortcut(
@@ -223,6 +305,7 @@ final class AppSettings: ObservableObject {
         binding.shortcut = shortcut
         bindings[trigger] = binding
         secondaryButtonBindings[button] = bindings
+        saveCustomPresetIfActive()
     }
 
     func hasSecondaryAction(for button: RemoteButton) -> Bool {
@@ -238,6 +321,30 @@ final class AppSettings: ObservableObject {
         secondaryButtonBindings = [:]
     }
 
+    var voiceShortcutConfiguration: VoiceShortcutConfiguration {
+        VoiceShortcutConfiguration(
+            profile: voiceShortcutProfile,
+            customShortcut: customVoiceShortcut,
+            customTriggerMode: customVoiceTriggerMode
+        )
+    }
+
+    var voiceShortcutDisplayName: String {
+        voiceShortcutConfiguration.displayName
+    }
+
+    func selectVoiceShortcutProfile(_ profile: VoiceShortcutProfile) {
+        voiceShortcutProfile = profile
+    }
+
+    func saveCurrentAsCustomPreset() {
+        customPresetBindings = buttonBindings
+        customPresetShortcuts = buttonShortcuts
+        customPresetSecondaryBindings = secondaryButtonBindings
+        saveCustomPreset()
+        voiceShortcutProfile = .custom
+    }
+
     func applyCodexPreset() {
         applyPreset(.codex)
     }
@@ -248,6 +355,10 @@ final class AppSettings: ObservableObject {
 
     func applyWeChatPreset() {
         applyPreset(.weChat)
+    }
+
+    func applyCustomPreset() {
+        applyPreset(.custom)
     }
 
     @discardableResult
@@ -263,19 +374,41 @@ final class AppSettings: ObservableObject {
     ) {
         let cycleActions = preservingCycleActions ? configuredCycleActions : []
         customMappingEnabled = true
-        voiceShortcutProfile = profile
-        buttonBindings = Self.bindings(for: profile)
-        buttonShortcuts = [:]
-        secondaryButtonBindings = [:]
+        if profile == .custom {
+            if let customPresetBindings {
+                buttonBindings = customPresetBindings
+                buttonShortcuts = customPresetShortcuts
+                secondaryButtonBindings = customPresetSecondaryBindings
+            } else {
+                customPresetBindings = buttonBindings
+                customPresetShortcuts = buttonShortcuts
+                customPresetSecondaryBindings = secondaryButtonBindings
+                saveCustomPreset()
+            }
+            voiceShortcutProfile = .custom
+        } else {
+            voiceShortcutProfile = profile
+            buttonBindings = Self.bindings(for: profile)
+            buttonShortcuts = [:]
+            secondaryButtonBindings = [:]
+        }
         for (button, trigger) in cycleActions {
             setAction(.cyclePreset, for: button, trigger: trigger)
+        }
+        if profile == .custom {
+            customPresetBindings = buttonBindings
+            customPresetShortcuts = buttonShortcuts
+            customPresetSecondaryBindings = secondaryButtonBindings
+            saveCustomPreset()
         }
     }
 
     var activePreset: VoiceShortcutProfile? {
-        guard customMappingEnabled,
-              buttonShortcuts.isEmpty
-        else { return nil }
+        guard customMappingEnabled else { return nil }
+        if voiceShortcutProfile == .custom {
+            return customPresetMatchesCurrentBindings ? .custom : nil
+        }
+        guard buttonShortcuts.isEmpty else { return nil }
 
         let expected = Self.bindings(for: voiceShortcutProfile)
         let mainBindingsMatch = RemoteButton.allCases.allSatisfy { button in
@@ -288,6 +421,13 @@ final class AppSettings: ObservableObject {
         return mainBindingsMatch && secondaryBindingsAreOnlyPresetSwitches
             ? voiceShortcutProfile
             : nil
+    }
+
+    private var customPresetMatchesCurrentBindings: Bool {
+        guard let customPresetBindings else { return false }
+        return buttonBindings == customPresetBindings
+            && buttonShortcuts == customPresetShortcuts
+            && secondaryButtonBindings == customPresetSecondaryBindings
     }
 
     private var configuredCycleActions: [(RemoteButton, ButtonTrigger)] {
@@ -310,7 +450,90 @@ final class AppSettings: ObservableObject {
             return workBuddyBindings
         case .weChat:
             return weChatBindings
+        case .custom:
+            return defaultBindings
         }
+    }
+
+    private func saveCustomVoiceShortcut() {
+        guard let customVoiceShortcut,
+              let data = try? JSONEncoder().encode(customVoiceShortcut)
+        else {
+            defaults.removeObject(forKey: Keys.customVoiceShortcut)
+            return
+        }
+        defaults.set(data, forKey: Keys.customVoiceShortcut)
+    }
+
+    private func saveCustomPresetIfActive() {
+        guard voiceShortcutProfile == .custom else { return }
+        customPresetBindings = buttonBindings
+        customPresetShortcuts = buttonShortcuts
+        customPresetSecondaryBindings = secondaryButtonBindings
+        saveCustomPreset()
+    }
+
+    private func saveCustomPreset() {
+        if let customPresetBindings {
+            let raw = Dictionary(uniqueKeysWithValues: customPresetBindings.map {
+                ($0.key.rawValue, $0.value)
+            })
+            if let data = try? JSONEncoder().encode(raw) {
+                defaults.set(data, forKey: Keys.customPresetBindings)
+            }
+        }
+        let shortcuts = Dictionary(uniqueKeysWithValues: customPresetShortcuts.map {
+            ($0.key.rawValue, $0.value)
+        })
+        if let data = try? JSONEncoder().encode(shortcuts) {
+            defaults.set(data, forKey: Keys.customPresetShortcuts)
+        }
+        let secondary = Dictionary(uniqueKeysWithValues: customPresetSecondaryBindings.map {
+            button, bindings in
+            (
+                button.rawValue,
+                Dictionary(uniqueKeysWithValues: bindings.map { ($0.key.rawValue, $0.value) })
+            )
+        })
+        if let data = try? JSONEncoder().encode(secondary) {
+            defaults.set(data, forKey: Keys.customPresetSecondaryBindings)
+        }
+    }
+
+    private static func decodeBindings(_ data: Data?) -> [RemoteButton: ButtonAction]? {
+        guard let data,
+              let decoded = try? JSONDecoder().decode([String: ButtonAction].self, from: data)
+        else { return nil }
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
+            RemoteButton(rawValue: key).map { ($0, value) }
+        })
+    }
+
+    private static func decodeShortcuts(_ data: Data?) -> [RemoteButton: CustomKeyboardShortcut] {
+        guard let data,
+              let decoded = try? JSONDecoder().decode([String: CustomKeyboardShortcut].self, from: data)
+        else { return [:] }
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
+            RemoteButton(rawValue: key).map { ($0, value) }
+        })
+    }
+
+    private static func decodeSecondaryBindings(
+        _ data: Data?
+    ) -> [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] {
+        guard let data,
+              let decoded = try? JSONDecoder().decode(
+                  [String: [String: ConfiguredButtonAction]].self,
+                  from: data
+              )
+        else { return [:] }
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { buttonKey, bindings in
+            guard let button = RemoteButton(rawValue: buttonKey) else { return nil }
+            let parsed = Dictionary(uniqueKeysWithValues: bindings.compactMap { triggerKey, binding in
+                ButtonTrigger(rawValue: triggerKey).map { ($0, binding) }
+            })
+            return parsed.isEmpty ? nil : (button, parsed)
+        })
     }
 
     private func saveBindings() {

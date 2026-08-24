@@ -52,7 +52,19 @@ Sparkle/WinSparkle 客户端会返回 404，因此构建不再回退到 GitHub R
 先实现客户端令牌和更新服务的短期授权，不能把 GitHub、R2 或 S3 密钥写进
 客户端。
 
-推荐使用 S3 或 Cloudflare R2：
+长期推荐使用 S3 或 Cloudflare R2。当前首个正式更新源复用 MiVibe 官网的
+公开静态目录；客户端和官网按钮都读取：
+
+```text
+https://gssghh.online/downloads/mivibe/updates/
+```
+
+`.github/workflows/prepare-website-update.yml` 会使用 GitHub Secret 中的私钥生成
+一个经过签名和验证的官网更新包。下载该 Actions artifact 后，把其中全部文件
+原样放入官网项目的 `public/downloads/mivibe/updates/` 并部署。私钥始终留在
+GitHub Actions 中，不会进入官网仓库、安装包或本地下载包。
+
+需要完全自动上传时再迁移到 S3 或 Cloudflare R2：
 
 设置 Repository Variable：
 

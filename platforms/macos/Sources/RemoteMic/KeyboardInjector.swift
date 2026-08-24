@@ -50,6 +50,8 @@ enum KeyboardInjector {
     static func sendVoiceShortcut(
         profile: VoiceShortcutProfile,
         transition: VoiceFunctionKeyTransition,
+        customShortcut: CustomKeyboardShortcut? = nil,
+        customTriggerMode: VoiceShortcutTriggerMode = .hold,
         accessibilityTrusted: () -> Bool = { isAccessibilityTrusted },
         keyStatePoster: (CGKeyCode, CGEventFlags, Bool) -> Bool = {
             postKeyState(code: $0, flags: $1, isDown: $2)
@@ -73,7 +75,35 @@ enum KeyboardInjector {
             return keyTapPoster(workBuddyVoiceKeyCode, workBuddyVoiceFlags)
         case .weChat:
             return functionKeyStatePoster(transition == .press)
+        case .custom:
+            guard let customShortcut else { return false }
+            switch customTriggerMode {
+            case .hold:
+                return keyStatePoster(
+                    CGKeyCode(customShortcut.keyCode),
+                    customShortcut.cgEventFlags,
+                    transition == .press
+                )
+            case .toggle:
+                return keyTapPoster(
+                    CGKeyCode(customShortcut.keyCode),
+                    customShortcut.cgEventFlags
+                )
+            }
         }
+    }
+
+    @discardableResult
+    static func sendVoiceShortcut(
+        configuration: VoiceShortcutConfiguration,
+        transition: VoiceFunctionKeyTransition
+    ) -> Bool {
+        sendVoiceShortcut(
+            profile: configuration.profile,
+            transition: transition,
+            customShortcut: configuration.customShortcut,
+            customTriggerMode: configuration.customTriggerMode
+        )
     }
 
     @discardableResult

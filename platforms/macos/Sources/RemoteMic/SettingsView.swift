@@ -11,9 +11,10 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case connection
     case mapping
     case permissions
+    case guide
     case about
 
-    static let mainFlow: [SettingsSection] = [.connection, .mapping, .permissions]
+    static let mainFlow: [SettingsSection] = [.connection, .mapping, .permissions, .guide]
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .connection: return "连接"
         case .mapping: return "按键"
         case .permissions: return "权限"
+        case .guide: return "教程"
         case .about: return "关于"
         }
     }
@@ -31,6 +33,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .connection: return "link"
         case .mapping: return "keyboard"
         case .permissions: return "shield.lefthalf.filled"
+        case .guide: return "book"
         case .about: return "info.circle"
         }
     }
@@ -71,6 +74,7 @@ struct SettingsView: View {
     @State private var selectedSection: SettingsSection = .connection
     @State private var selectedRemoteButton: RemoteButton = .ok
     @State private var shortcutEditingTarget: ShortcutEditingTarget?
+    @State private var voiceShortcutEditorPresented = false
     @State private var bluetoothAuthorization = CBManager.authorization
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
@@ -106,8 +110,7 @@ struct SettingsView: View {
         }
         .sheet(item: $shortcutEditingTarget) { target in
             ShortcutEditorSheet(
-                button: target.button,
-                trigger: target.trigger,
+                title: "录入\(target.button.displayName)\(target.trigger.displayName)快捷键",
                 currentShortcut: settings.configuredAction(
                     for: target.button,
                     trigger: target.trigger
@@ -118,6 +121,15 @@ struct SettingsView: View {
                     for: target.button,
                     trigger: target.trigger
                 )
+            }
+        }
+        .sheet(isPresented: $voiceShortcutEditorPresented) {
+            ShortcutEditorSheet(
+                title: "录入语音键快捷键",
+                currentShortcut: settings.customVoiceShortcut
+            ) { shortcut in
+                settings.customVoiceShortcut = shortcut
+                settings.selectVoiceShortcutProfile(.custom)
             }
         }
     }
@@ -196,6 +208,10 @@ struct SettingsView: View {
                 .opacity(selectedSection == .permissions ? 1 : 0)
                 .allowsHitTesting(selectedSection == .permissions)
                 .accessibilityHidden(selectedSection != .permissions)
+            guidePage
+                .opacity(selectedSection == .guide ? 1 : 0)
+                .allowsHitTesting(selectedSection == .guide)
+                .accessibilityHidden(selectedSection != .guide)
             AboutView(
                 updatesConfigured: updatesConfigured,
                 onCheckForUpdates: onCheckForUpdates
@@ -263,7 +279,7 @@ struct SettingsView: View {
                     DeviceStatusStep(
                         symbol: "mic.fill",
                         title: "\(settings.voiceShortcutProfile.displayName) 语音",
-                        detail: "快捷键 \(settings.voiceShortcutProfile.shortcutDisplayName)",
+                        detail: "快捷键 \(settings.voiceShortcutDisplayName)",
                         badge: voiceTriggerBadge,
                         tint: .blue
                     )
@@ -390,50 +406,28 @@ struct SettingsView: View {
     }
 
     private var mappingPage: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
             PageHeader(
                 title: "按键映射",
-                subtitle: "自定义小米遥控器按键功能，并保留语音键的固定核心行为"
+                subtitle: "普通按键和语音触发都可配置；遥控器麦克风的收音开关仍由语音键可靠控制"
             )
 
             GlassPanel {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text("当前模式")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            StatusPill(
-                                text: currentPresetStatus,
-                                tint: settings.activePreset == nil ? .orange : .green
-                            )
-                        }
-                        Toggle("启用小米遥控器自定义按键映射", isOn: Binding(
-                            get: { settings.customMappingEnabled },
-                            set: { enabled in
-                                settings.customMappingEnabled = enabled
-                                model.applyHIDSettings()
-                            }
-                        ))
-                        Text(model.hidStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) {
+                        mappingStatusBlock
+                        Spacer(minLength: 12)
+                        mappingPresetControls
                     }
-                    Spacer(minLength: 12)
-                    StatusPill(
-                        text: settings.customMappingEnabled ? "已启用" : "未启用",
-                        tint: settings.customMappingEnabled ? .green : .secondary
-                    )
-                    Button("恢复默认") {
-                        settings.resetBindings()
-                        selectedRemoteButton = .ok
+                    VStack(alignment: .leading, spacing: 12) {
+                        mappingStatusBlock
+                        mappingPresetControls
                     }
-                    .adaptiveGlassButtonStyle()
-                    presetButton(.codex)
-                    presetButton(.workBuddy)
-                    presetButton(.weChat)
                 }
             }
+
+            voiceShortcutPanel
 
             AdaptiveGlassEffectContainer(spacing: 14) {
                 HStack(alignment: .top, spacing: 14) {
@@ -442,7 +436,8 @@ struct SettingsView: View {
                             selectedButton: $selectedRemoteButton,
                             activeButtons: model.activeRemoteButtons,
                             voiceActive: model.isStreaming,
-                            voiceProfile: settings.voiceShortcutProfile
+                            voiceProfile: settings.voiceShortcutProfile,
+                            voiceShortcutDisplayName: settings.voiceShortcutDisplayName
                         )
                         .onReceive(model.$activeRemoteButtons) { buttons in
                             if let button = RemoteButton.allCases.first(where: { buttons.contains($0) }) {
@@ -457,7 +452,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("按键动作")
                                     .font(.headline)
-                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy → 微信循环。")
+                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy → 微信 → 自定义循环。")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -487,8 +482,131 @@ struct SettingsView: View {
                 }
             }
             .frame(maxHeight: .infinity)
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(22)
+        .adaptiveSoftTopScrollEdge()
+    }
+
+    private var mappingStatusBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("当前模式")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                StatusPill(
+                    text: currentPresetStatus,
+                    tint: settings.activePreset == nil ? .orange : .green
+                )
+            }
+            Toggle("启用小米遥控器自定义按键映射", isOn: Binding(
+                get: { settings.customMappingEnabled },
+                set: { enabled in
+                    settings.customMappingEnabled = enabled
+                    model.applyHIDSettings()
+                }
+            ))
+            Text(model.hidStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var mappingPresetControls: some View {
+        HStack(spacing: 8) {
+            StatusPill(
+                text: settings.customMappingEnabled ? "已启用" : "未启用",
+                tint: settings.customMappingEnabled ? .green : .secondary
+            )
+            Button("恢复默认") {
+                settings.resetBindings()
+                selectedRemoteButton = .ok
+            }
+            .adaptiveGlassButtonStyle()
+            presetButton(.codex)
+            presetButton(.workBuddy)
+            presetButton(.weChat)
+            presetButton(.custom)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var voiceShortcutPanel: some View {
+        GlassPanel {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 14) {
+                    voiceShortcutHeading
+                    Spacer(minLength: 8)
+                    voiceShortcutControls
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    voiceShortcutHeading
+                    voiceShortcutControls
+                }
+            }
+        }
+    }
+
+    private var voiceShortcutHeading: some View {
+        HStack(alignment: .center, spacing: 14) {
+                Image(systemName: "mic.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Color.accentColor)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("语音键动作")
+                        .font(.headline)
+                    Text("按住原生语音键仍会开启遥控器麦克风；这里决定目标软件收到哪个快捷键。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    private var voiceShortcutControls: some View {
+        HStack(spacing: 10) {
+                Picker("语音快捷键", selection: Binding(
+                    get: { settings.voiceShortcutProfile },
+                    set: { settings.selectVoiceShortcutProfile($0) }
+                )) {
+                    ForEach(VoiceShortcutProfile.allCases, id: \.rawValue) { profile in
+                        Text(profile.displayName).tag(profile)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 112)
+
+                if settings.voiceShortcutProfile == .custom {
+                    Button {
+                        voiceShortcutEditorPresented = true
+                    } label: {
+                        Label(settings.voiceShortcutDisplayName, systemImage: "keyboard")
+                    }
+                    .adaptiveGlassButtonStyle()
+
+                    Picker("触发方式", selection: $settings.customVoiceTriggerMode) {
+                        ForEach(VoiceShortcutTriggerMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 92)
+                    .help(settings.customVoiceTriggerMode.helpText)
+
+                    Button("保存当前为自定义预设") {
+                        settings.saveCurrentAsCustomPreset()
+                    }
+                    .adaptiveProminentGlassButtonStyle()
+                } else {
+                    Text(settings.voiceShortcutDisplayName)
+                        .font(.system(.body, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 74)
+                }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
@@ -661,6 +779,83 @@ struct SettingsView: View {
 
             Spacer(minLength: 0)
         }
+    }
+
+    private var guidePage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(
+                    title: "使用教程",
+                    subtitle: "从首次连接到自定义语音键，按这条最短路径完成设置"
+                )
+
+                GlassPanel {
+                    VStack(alignment: .leading, spacing: 16) {
+                        GuideStepRow(
+                            number: 1,
+                            title: "先完成三个权限",
+                            detail: "开启蓝牙、输入监控和辅助功能。授权后返回 MiVibe，应用会自动重新检测按键。",
+                            symbol: "checkmark.shield.fill"
+                        )
+                        GuideStepRow(
+                            number: 2,
+                            title: "确认遥控器和虚拟麦克风就绪",
+                            detail: "连接页应显示遥控器已连接、MiRemoteV 2ch 已就绪。可先播放测试音检查音频通道。",
+                            symbol: "waveform.badge.mic"
+                        )
+                        GuideStepRow(
+                            number: 3,
+                            title: "选择预设或自定义",
+                            detail: "Codex、WorkBuddy、微信可以一键套用；自定义预设会保存普通按键、双击/长按和语音快捷键。",
+                            symbol: "slider.horizontal.3"
+                        )
+                        GuideStepRow(
+                            number: 4,
+                            title: "按住语音键说话",
+                            detail: "原生语音键负责让遥控器真正传输声音；松开后应用会等待尾部音频送完，再结束目标软件听写。",
+                            symbol: "mic.fill"
+                        )
+                    }
+                }
+
+                AdaptiveGlassEffectContainer(spacing: 14) {
+                    HStack(alignment: .top, spacing: 14) {
+                        GlassPanel {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label("推荐测试顺序", systemImage: "list.number")
+                                    .font(.headline)
+                                Text("1. 用方向键移动光标\n2. 用返回键删除\n3. 按住语音键说一句完整的话\n4. 松开后确认尾音完整\n5. 用确认键发送")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineSpacing(4)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        GlassPanel {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label("遇到问题", systemImage: "wrench.and.screwdriver.fill")
+                                    .font(.headline)
+                                Text("方向键可用但映射无效：重新检查输入监控与辅助功能。\n有快捷键但没声音：确认按的是原生语音键。\n语音无文字：检查目标软件快捷键与当前预设是否一致。")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineSpacing(4)
+                                HStack {
+                                    Button("查看权限") { selectedSection = .permissions }
+                                        .adaptiveGlassButtonStyle()
+                                    Button("打开日志") { model.openLogFolder() }
+                                        .adaptiveGlassButtonStyle()
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .adaptiveSoftTopScrollEdge()
     }
 
     private var permissionsPage: some View {
@@ -866,6 +1061,8 @@ struct SettingsView: View {
                 settings.applyWorkBuddyPreset()
             case .weChat:
                 settings.applyWeChatPreset()
+            case .custom:
+                settings.applyCustomPreset()
             }
             selectedRemoteButton = .power
         }
@@ -891,21 +1088,18 @@ struct SettingsView: View {
 private struct ShortcutEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let button: RemoteButton
-    let trigger: ButtonTrigger
+    let title: String
     let currentShortcut: CustomKeyboardShortcut?
     let onSave: (CustomKeyboardShortcut?) -> Void
 
     @State private var shortcut: CustomKeyboardShortcut?
 
     init(
-        button: RemoteButton,
-        trigger: ButtonTrigger,
+        title: String,
         currentShortcut: CustomKeyboardShortcut?,
         onSave: @escaping (CustomKeyboardShortcut?) -> Void
     ) {
-        self.button = button
-        self.trigger = trigger
+        self.title = title
         self.currentShortcut = currentShortcut
         self.onSave = onSave
         _shortcut = State(initialValue: currentShortcut)
@@ -914,7 +1108,7 @@ private struct ShortcutEditorSheet: View {
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 5) {
-                Text("录入\(button.displayName)\(trigger.displayName)快捷键")
+                Text(title)
                     .font(.title3.weight(.semibold))
                 Text("直接按下想要的按键组合，支持 Command、Option、Control、Shift 和 Fn。")
                     .font(.caption)
@@ -1136,6 +1330,35 @@ private struct UsageInstructionRow: View {
     }
 }
 
+private struct GuideStepRow: View {
+    let number: Int
+    let title: String
+    let detail: String
+    let symbol: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text("\(number)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(Color.accentColor, in: Circle())
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 private struct RC003Photo: View {
     private static let productImage: NSImage? = {
         guard let url = Bundle.main.url(
@@ -1190,6 +1413,7 @@ private struct RemoteControlDiagram: View {
     let activeButtons: Set<RemoteButton>
     let voiceActive: Bool
     let voiceProfile: VoiceShortcutProfile
+    let voiceShortcutDisplayName: String
 
     private let canvasSize = CGSize(width: 174, height: 352)
 
@@ -1271,10 +1495,10 @@ private struct RemoteControlDiagram: View {
             .frame(width: canvasSize.width * width, height: canvasSize.height * height)
             .position(x: canvasSize.width * x, y: canvasSize.height * y)
             .help(
-                "按住时触发 \(voiceProfile.displayName) \(voiceProfile.shortcutDisplayName) " +
+                "按住时触发 \(voiceProfile.displayName) \(voiceShortcutDisplayName) " +
                     "并桥接遥控器语音；松开时停止"
             )
             .accessibilityElement()
-            .accessibilityLabel(Text("\(voiceProfile.displayName) 语音键，固定核心功能"))
+            .accessibilityLabel(Text("\(voiceProfile.displayName) 语音键，可在上方自定义快捷键"))
     }
 }

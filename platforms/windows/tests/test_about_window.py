@@ -87,7 +87,7 @@ class AboutWindowTests(unittest.TestCase):
         about = AboutWindow(
             mock.Mock(),
             "MiVibe Remote",
-            "0.1.16",
+            "0.1.18",
             mock.Mock(),
             mock.Mock(),
         )
@@ -104,7 +104,7 @@ class AboutWindowTests(unittest.TestCase):
         about = AboutWindow(
             owner,
             "MiVibe Remote",
-            "0.1.16",
+            "0.1.18",
             mock.Mock(),
             mock.Mock(),
         )
@@ -133,7 +133,7 @@ class AboutWindowTests(unittest.TestCase):
         about = AboutWindow(
             mock.Mock(),
             "MiVibe Remote",
-            "0.1.16",
+            "0.1.18",
             mock.Mock(),
             mock.Mock(),
         )

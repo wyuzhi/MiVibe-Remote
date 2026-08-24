@@ -3,6 +3,22 @@ import Combine
 import CoreAudio
 import Foundation
 
+struct HIDPermissionSnapshot: Equatable {
+    let inputMonitoringGranted: Bool
+    let accessibilityGranted: Bool
+}
+
+enum HIDPermissionRecoveryPolicy {
+    static func shouldReapply(
+        started: Bool,
+        mappingEnabled: Bool,
+        previous: HIDPermissionSnapshot?,
+        current: HIDPermissionSnapshot
+    ) -> Bool {
+        started && mappingEnabled && previous != nil && previous != current
+    }
+}
+
 final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     static let voiceCaptureStartupDelay: TimeInterval = 0.20
     /// STOP and the final audio packets use different BLE characteristics, so
@@ -37,7 +53,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private let defaultInputLease = DefaultInputDeviceLease()
     private var testToneGeneration = 0
     private var voiceFunctionKeyLatch = VoiceFunctionKeyLatch()
-    private var activeVoiceShortcutProfile: VoiceShortcutProfile?
+    private var activeVoiceShortcutConfiguration: VoiceShortcutConfiguration?
     private var voicePreRoll = VoiceAudioPreRoll(
         maximumSampleCount: BridgeAppModel.maximumVoicePreRollSamples
     )
@@ -59,7 +75,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         monitor.onCyclePreset = { [weak self] in
             guard let self else { return }
             let profile = self.settings.cyclePreset()
-            self.voiceShortcutStatus = profile.readyStatus
+            self.voiceShortcutStatus = self.settings.voiceShortcutConfiguration.readyStatus
             AppLogger.shared.write("PRESET CYCLE active=\(profile.rawValue)")
         }
         monitor.ensureHardwareSuppression = { [weak self] in
@@ -83,18 +99,23 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     private var audioRecoveryWorkItem: DispatchWorkItem?
     private var audioRecoveryGeneration: UInt64 = 0
     private var cancellables = Set<AnyCancellable>()
+    private var lastHIDPermissionSnapshot: HIDPermissionSnapshot?
     private lazy var audioHardwareListener: AudioObjectPropertyListenerBlock = { [weak self] count, addresses in
         let properties = Self.audioHardwarePropertyNames(count: count, addresses: addresses)
         self?.scheduleAudioRecovery(reason: "hardware_change", details: "properties=\(properties)")
     }
 
     init() {
-        voiceShortcutStatus = settings.voiceShortcutProfile.readyStatus
-        settings.$voiceShortcutProfile
+        voiceShortcutStatus = settings.voiceShortcutConfiguration.readyStatus
+        Publishers.CombineLatest3(
+            settings.$voiceShortcutProfile,
+            settings.$customVoiceShortcut,
+            settings.$customVoiceTriggerMode
+        )
             .dropFirst()
-            .sink { [weak self] profile in
+            .sink { [weak self] _ in
                 guard let self, !self.voiceFunctionKeyLatch.isHeld else { return }
-                self.voiceShortcutStatus = profile.readyStatus
+                self.voiceShortcutStatus = self.settings.voiceShortcutConfiguration.readyStatus
             }
             .store(in: &cancellables)
         audioOutput.onConfigurationChange = { [weak self] in
@@ -462,6 +483,29 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         }
         hidMonitor.start()
         hidStatus = hidMonitor.status
+        lastHIDPermissionSnapshot = currentHIDPermissionSnapshot
+    }
+
+    func recoverHIDSettingsAfterActivation() {
+        let current = currentHIDPermissionSnapshot
+        guard HIDPermissionRecoveryPolicy.shouldReapply(
+            started: started,
+            mappingEnabled: settings.customMappingEnabled,
+            previous: lastHIDPermissionSnapshot,
+            current: current
+        ) else { return }
+        AppLogger.shared.write(
+            "HID PERMISSIONS changed input=\(current.inputMonitoringGranted) " +
+                "accessibility=\(current.accessibilityGranted) recovery=apply_settings"
+        )
+        applyHIDSettings()
+    }
+
+    private var currentHIDPermissionSnapshot: HIDPermissionSnapshot {
+        HIDPermissionSnapshot(
+            inputMonitoringGranted: HIDRemoteMonitor.isInputMonitoringGranted,
+            accessibilityGranted: KeyboardInjector.isAccessibilityTrusted
+        )
     }
 
     private func requestNextHIDPermissionIfNeeded() {
@@ -625,7 +669,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
               !isStreaming
         else { return }
         voiceStopWorkItem?.cancel()
-        let commitDelay = activeVoiceShortcutProfile == .codex
+        let commitDelay = activeVoiceShortcutConfiguration?.profile == .codex
             ? Self.codexRecognitionCommitDelay
             : 0
         guard commitDelay > 0 else {
@@ -760,23 +804,32 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     private func updateVoiceFunctionKeyState(streaming: Bool) {
         guard let transition = voiceFunctionKeyLatch.transition(streaming: streaming) else { return }
-        let profile = transition == .release
-            ? activeVoiceShortcutProfile ?? settings.voiceShortcutProfile
-            : settings.voiceShortcutProfile
-        guard KeyboardInjector.sendVoiceShortcut(profile: profile, transition: transition) else {
+        let configuration = transition == .release
+            ? activeVoiceShortcutConfiguration ?? settings.voiceShortcutConfiguration
+            : settings.voiceShortcutConfiguration
+        if configuration.profile == .custom && configuration.customShortcut == nil {
             voiceFunctionKeyLatch.rollback(transition)
-            voiceShortcutStatus = "需要辅助功能权限才能触发 \(profile.displayName) 语音"
+            voiceShortcutStatus = "请先在按键页面录入自定义语音快捷键"
+            AppLogger.shared.write("VOICE SHORTCUT ignored profile=custom reason=not_configured")
+            return
+        }
+        guard KeyboardInjector.sendVoiceShortcut(
+            configuration: configuration,
+            transition: transition
+        ) else {
+            voiceFunctionKeyLatch.rollback(transition)
+            voiceShortcutStatus = "需要辅助功能权限才能触发 \(configuration.profile.displayName) 语音"
             AppLogger.shared.write(
-                "VOICE SHORTCUT failed profile=\(profile.rawValue) edge=\(transition)"
+                "VOICE SHORTCUT failed profile=\(configuration.profile.rawValue) edge=\(transition)"
             )
             return
         }
         if transition == .press {
-            activeVoiceShortcutProfile = profile
+            activeVoiceShortcutConfiguration = configuration
         } else {
-            activeVoiceShortcutProfile = nil
+            activeVoiceShortcutConfiguration = nil
         }
-        switch (profile, transition) {
+        switch (configuration.profile, transition) {
         case (.codex, .press):
             voiceShortcutStatus = "Codex ⌃⇧D 已按下；松开语音键即释放"
         case (.codex, .release):
@@ -789,10 +842,16 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             voiceShortcutStatus = "微信 Fn 已按住；正在语音输入文字"
         case (.weChat, .release):
             voiceShortcutStatus = "微信 Fn 已释放；语音输入结束"
+        case (.custom, .press):
+            let verb = configuration.customTriggerMode == .hold ? "已按下" : "已点按"
+            voiceShortcutStatus = "自定义 \(configuration.displayName) \(verb)；正在录音"
+        case (.custom, .release):
+            let verb = configuration.customTriggerMode == .hold ? "已释放" : "已再次点按"
+            voiceShortcutStatus = "自定义 \(configuration.displayName) \(verb)；语音输入结束"
         }
         AppLogger.shared.write(
-            "VOICE SHORTCUT profile=\(profile.rawValue) edge=\(transition) " +
-                "chord=\(profile.shortcutDisplayName)"
+            "VOICE SHORTCUT profile=\(configuration.profile.rawValue) edge=\(transition) " +
+                "chord=\(configuration.displayName) mode=\(configuration.customTriggerMode.rawValue)"
         )
     }
 }

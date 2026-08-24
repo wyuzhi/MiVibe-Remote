@@ -139,6 +139,58 @@ struct VoiceFunctionKeyLatchTests {
         #expect(posted == [true, false])
     }
 
+    @Test func customHoldProfileUsesRecordedShortcutAcrossBothEdges() {
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 40,
+            modifierFlags: [.control, .option],
+            keyLabel: "K"
+        )
+        var posted: [(CGKeyCode, CGEventFlags, Bool)] = []
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .custom,
+                transition: transition,
+                customShortcut: shortcut,
+                customTriggerMode: .hold,
+                accessibilityTrusted: { true },
+                keyStatePoster: {
+                    posted.append(($0, $1, $2))
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted[0].0 == 40)
+        #expect(posted[0].1 == [.maskControl, .maskAlternate])
+        #expect(posted.map(\.2) == [true, false])
+    }
+
+    @Test func customToggleProfileTapsRecordedShortcutAtBothEdges() {
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 2,
+            modifierFlags: [.command],
+            keyLabel: "D"
+        )
+        var posted: [(CGKeyCode, CGEventFlags)] = []
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .custom,
+                transition: transition,
+                customShortcut: shortcut,
+                customTriggerMode: .toggle,
+                accessibilityTrusted: { true },
+                keyTapPoster: {
+                    posted.append(($0, $1))
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted.allSatisfy { $0.0 == 2 && $0.1 == [.maskCommand] })
+    }
+
     @Test func voiceProfilesFailClosedWithoutAccessibility() {
         for profile in VoiceShortcutProfile.allCases {
             #expect(!KeyboardInjector.sendVoiceShortcut(

@@ -14,12 +14,12 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.16"
+APP_VERSION = "0.1.18"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -42,6 +42,7 @@ from runtime_launcher import role_command
 from bridges.xiaomi.xiaomi_config import APPDATA, CONFIG_PATH, load_config
 from standalone.about_info import AUTHOR_LINE
 from standalone.about_window import AboutWindow
+from standalone.environment_check import EnvironmentCheckWindow, run_environment_check
 from standalone.windows_update import MainThreadShutdownBridge, WinSparkleUpdater
 
 
@@ -187,8 +188,9 @@ class XiaomiApp:
     def __init__(self, root: tk.Tk, minimized: bool) -> None:
         self.root = root
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("700x350")
-        self.root.minsize(660, 320)
+        self.root.geometry("820x540")
+        self.root.minsize(760, 500)
+        self.root.configure(background="#eef2f7")
         self.root.protocol("WM_DELETE_WINDOW", self.hide)
         self.workers = XiaomiWorkers()
         self.settings_processes: list[subprocess.Popen] = []
@@ -198,6 +200,7 @@ class XiaomiApp:
         self._exiting = False
         self.control_socket: socket.socket | None = None
         self.tray: pystray.Icon | None = None
+        self.guide_window: tk.Toplevel | None = None
         self.status_var = tk.StringVar(value="正在启动")
         self.detail_var = tk.StringVar(value="")
         self.updater = WinSparkleUpdater(
@@ -214,6 +217,13 @@ class XiaomiApp:
             self.check_updates,
             log,
         )
+        self.environment_check = EnvironmentCheckWindow(
+            self.root,
+            check_provider=self._collect_environment_check,
+            on_repair=self.repair_audio,
+            on_restart=self.restart_workers,
+            on_open_logs=self.open_logs,
+        )
         self._build_ui()
         self._start_tray()
         self._start_control()
@@ -229,56 +239,184 @@ class XiaomiApp:
         self.root.after(800, self._poll)
 
     def _build_ui(self) -> None:
-        frame = ttk.Frame(self.root, padding=24)
-        frame.pack(fill="both", expand=True)
-        title_row = ttk.Frame(frame)
-        title_row.pack(fill="x")
-        ttk.Label(
-            title_row,
+        background = "#eef2f7"
+        navy = "#101b31"
+        text = "#152033"
+        muted = "#64748b"
+        blue = "#1677ff"
+
+        header = tk.Frame(self.root, bg=navy, padx=28, pady=22)
+        header.pack(fill="x")
+        title_block = tk.Frame(header, bg=navy)
+        title_block.pack(side="left", fill="x", expand=True)
+        tk.Label(
+            title_block,
             text=APP_NAME,
-            font=("Microsoft YaHei UI", 18, "bold"),
-        ).pack(side="left", anchor="w")
-        ttk.Button(title_row, text="关于", width=7, command=self.show_about).pack(
-            side="right"
-        )
-        ttk.Label(
-            frame,
-            text=f"v{APP_VERSION} · Windows · 独立运行",
-            foreground="#666666",
-        ).pack(anchor="w", pady=(2, 1))
-        author_link = ttk.Label(
-            frame,
-            text=AUTHOR_LINE,
-            foreground="#1677ff",
+            bg=navy,
+            fg="white",
+            font=("Microsoft YaHei UI", 20, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            title_block,
+            text=f"小米蓝牙遥控器 2 · Windows 工作流控制台 · v{APP_VERSION}",
+            bg=navy,
+            fg="#aebbd0",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor="w", pady=(4, 0))
+        tk.Button(
+            header,
+            text="关于",
+            command=self.show_about,
+            relief="flat",
+            bg="#1a2945",
+            fg="white",
+            activebackground="#263a60",
+            activeforeground="white",
+            padx=14,
+            pady=7,
             cursor="hand2",
-            takefocus=True,
+        ).pack(side="right")
+
+        content = tk.Frame(self.root, bg=background, padx=20, pady=18)
+        content.pack(fill="both", expand=True)
+
+        status_card = tk.Frame(
+            content,
+            bg="white",
+            highlightbackground="#dce3ed",
+            highlightthickness=1,
+            padx=20,
+            pady=17,
         )
-        author_link.pack(anchor="w", pady=(0, 15))
+        status_card.pack(fill="x")
+        status_title = tk.Frame(status_card, bg="white")
+        status_title.pack(fill="x")
+        tk.Label(
+            status_title,
+            text="运行状态",
+            bg="white",
+            fg=muted,
+            font=("Microsoft YaHei UI", 9, "bold"),
+        ).pack(side="left")
+        author_link = tk.Label(
+            status_title,
+            text=AUTHOR_LINE,
+            bg="white",
+            fg=blue,
+            cursor="hand2",
+            font=("Microsoft YaHei UI", 9),
+        )
+        author_link.pack(side="right")
         author_link.bind("<Button-1>", lambda _event: self.show_about())
-        author_link.bind("<Return>", lambda _event: self.show_about())
-        author_link.bind("<space>", lambda _event: self.show_about())
-        ttk.Label(frame, textvariable=self.status_var, font=("Microsoft YaHei UI", 12, "bold")).pack(anchor="w")
-        ttk.Label(
-            frame,
+        tk.Label(
+            status_card,
+            textvariable=self.status_var,
+            bg="white",
+            fg=text,
+            font=("Microsoft YaHei UI", 16, "bold"),
+        ).pack(anchor="w", pady=(7, 0))
+        tk.Label(
+            status_card,
             textvariable=self.detail_var,
-            foreground="#555555",
-            wraplength=500,
+            bg="white",
+            fg=muted,
+            wraplength=720,
             justify="left",
-        ).pack(anchor="w", pady=(8, 24))
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x")
-        ttk.Button(buttons, text="按键与语音设置", command=self.open_settings).pack(side="left")
-        ttk.Button(buttons, text="重启桥接", command=self.restart_workers).pack(side="left", padx=10)
-        ttk.Button(buttons, text="安装/修复语音驱动", command=self.repair_audio).pack(side="left")
-        ttk.Button(buttons, text="检查更新", command=self.check_updates).pack(side="left", padx=(10, 0))
-        ttk.Button(buttons, text="打开日志", command=self.open_logs).pack(side="left")
-        ttk.Button(buttons, text="退出", command=self.exit).pack(side="right")
-        ttk.Label(
-            frame,
-            text="本包不含输入法或语音识别。小米语音所需 VB-CABLE 由小米安装流程从官方地址获取。",
-            foreground="#777777",
-            wraplength=500,
-        ).pack(anchor="w", pady=(26, 0))
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor="w", pady=(6, 0))
+
+        primary = tk.Frame(content, bg=background)
+        primary.pack(fill="x", pady=(14, 0))
+        tk.Button(
+            primary,
+            text="按键与语音设置",
+            command=self.open_settings,
+            relief="flat",
+            bg=blue,
+            fg="white",
+            activebackground="#0d5fd4",
+            activeforeground="white",
+            font=("Microsoft YaHei UI", 11, "bold"),
+            padx=22,
+            pady=12,
+            cursor="hand2",
+        ).pack(side="left", fill="x", expand=True)
+        tk.Button(
+            primary,
+            text="环境检查",
+            command=self.show_environment_check,
+            relief="flat",
+            bg="#13a76b",
+            fg="white",
+            activebackground="#0d8a57",
+            activeforeground="white",
+            font=("Microsoft YaHei UI", 11, "bold"),
+            padx=22,
+            pady=12,
+            cursor="hand2",
+        ).pack(side="left", fill="x", expand=True, padx=(12, 0))
+
+        tools_card = tk.Frame(
+            content,
+            bg="white",
+            highlightbackground="#dce3ed",
+            highlightthickness=1,
+            padx=18,
+            pady=15,
+        )
+        tools_card.pack(fill="x", pady=(14, 0))
+        tk.Label(
+            tools_card,
+            text="维护工具",
+            bg="white",
+            fg=text,
+            font=("Microsoft YaHei UI", 11, "bold"),
+        ).pack(anchor="w", pady=(0, 10))
+        tool_buttons = tk.Frame(tools_card, bg="white")
+        tool_buttons.pack(fill="x")
+        for label, command in (
+            ("重启桥接", self.restart_workers),
+            ("安装/修复语音驱动", self.repair_audio),
+            ("使用教程", self.show_guide),
+            ("检查更新", self.check_updates),
+            ("打开日志", self.open_logs),
+        ):
+            tk.Button(
+                tool_buttons,
+                text=label,
+                command=command,
+                relief="flat",
+                bg="#f2f5f9",
+                fg=text,
+                activebackground="#e3e9f1",
+                padx=12,
+                pady=8,
+                cursor="hand2",
+            ).pack(side="left", padx=(0, 8))
+
+        footer = tk.Frame(content, bg=background)
+        footer.pack(fill="x", pady=(14, 0))
+        tk.Label(
+            footer,
+            text="MiVibe 不包含输入法或语音识别；遥控器声音通过 VB-CABLE 送给你选择的输入法。",
+            bg=background,
+            fg=muted,
+            wraplength=650,
+            justify="left",
+            font=("Microsoft YaHei UI", 8),
+        ).pack(side="left")
+        tk.Button(
+            footer,
+            text="退出",
+            command=self.exit,
+            relief="flat",
+            bg=background,
+            fg="#cf3333",
+            activebackground="#ffe8e8",
+            padx=12,
+            pady=6,
+            cursor="hand2",
+        ).pack(side="right")
 
     @staticmethod
     def _icon(color: str = "#2f80ed") -> Image.Image:
@@ -293,6 +431,8 @@ class XiaomiApp:
         menu = pystray.Menu(
             pystray.MenuItem("打开状态", lambda *_: self.root.after(0, self.show)),
             pystray.MenuItem("按键与语音设置", lambda *_: self.root.after(0, self.open_settings)),
+            pystray.MenuItem("环境检查", lambda *_: self.root.after(0, self.show_environment_check)),
+            pystray.MenuItem("使用教程", lambda *_: self.root.after(0, self.show_guide)),
             pystray.MenuItem("检查更新", lambda *_: self.root.after(0, self.check_updates)),
             pystray.MenuItem("重启桥接", lambda *_: self.root.after(0, self.workers.restart_bridge)),
             pystray.MenuItem(
@@ -348,6 +488,17 @@ class XiaomiApp:
         )
         self.settings_processes.append(process)
 
+    def _collect_environment_check(self):
+        return run_environment_check(
+            app_dir=Path(sys.executable).resolve().parent,
+            config_path=CONFIG_PATH,
+            log_dir=LOG_DIR,
+            worker_status=self.workers.status(),
+        )
+
+    def show_environment_check(self) -> None:
+        self.environment_check.show()
+
     @staticmethod
     def open_logs() -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -396,6 +547,123 @@ class XiaomiApp:
 
     def show_about(self) -> None:
         self.about.show()
+
+    def show_guide(self) -> None:
+        if self.guide_window is not None and self.guide_window.winfo_exists():
+            self.guide_window.deiconify()
+            self.guide_window.lift()
+            self.guide_window.focus_force()
+            return
+
+        window = tk.Toplevel(self.root)
+        self.guide_window = window
+        window.title("MiVibe Remote 使用教程")
+        window.geometry("720x650")
+        window.minsize(640, 520)
+        window.configure(bg="#eef2f7")
+        window.protocol("WM_DELETE_WINDOW", window.withdraw)
+
+        header = tk.Frame(window, bg="#101b31", padx=26, pady=20)
+        header.pack(fill="x")
+        tk.Label(
+            header,
+            text="使用教程",
+            bg="#101b31",
+            fg="white",
+            font=("Microsoft YaHei UI", 18, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            header,
+            text="第一次安装按顺序完成；以后只需要按住语音键说话。",
+            bg="#101b31",
+            fg="#aebbd0",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor="w", pady=(4, 0))
+
+        canvas = tk.Canvas(window, bg="#eef2f7", highlightthickness=0)
+        scrollbar = tk.Scrollbar(window, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(fill="both", expand=True)
+        body = tk.Frame(canvas, bg="#eef2f7", padx=18, pady=16)
+        item = canvas.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(item, width=event.width))
+
+        steps = (
+            ("1", "连接遥控器", "先在 Windows 蓝牙设置中连接“小米蓝牙语音遥控器”。方向键能移动光标，说明基础连接成功。"),
+            ("2", "运行环境检查", "点击主界面的“环境检查”。VB-CABLE 的 CABLE Input 和 CABLE Output 必须同时存在。"),
+            ("3", "选择一个预设", "在“按键与语音设置”里选择 Codex、WorkBuddy 或微信输入；也可以逐个录入自己的快捷键。"),
+            ("4", "核对输入法快捷键", "MiVibe 的语音快捷键、触发方式必须与目标输入法一致。按住说话请选择按住型；点一次开始、再点一次结束请选择开关型。"),
+            ("5", "完成一次真实测试", "把光标放进文本框，按住遥控器原生麦克风键说完整一句话，松开后等待文字出现。"),
+        )
+        for number, title, detail in steps:
+            card = tk.Frame(
+                body,
+                bg="white",
+                highlightbackground="#dce3ed",
+                highlightthickness=1,
+                padx=16,
+                pady=14,
+            )
+            card.pack(fill="x", pady=(0, 10))
+            badge = tk.Label(
+                card,
+                text=number,
+                bg="#1677ff",
+                fg="white",
+                font=("Microsoft YaHei UI", 10, "bold"),
+                width=3,
+                pady=4,
+            )
+            badge.pack(side="left", anchor="n")
+            copy = tk.Frame(card, bg="white")
+            copy.pack(side="left", fill="x", expand=True, padx=(12, 0))
+            tk.Label(
+                copy,
+                text=title,
+                bg="white",
+                fg="#152033",
+                font=("Microsoft YaHei UI", 11, "bold"),
+            ).pack(anchor="w")
+            tk.Label(
+                copy,
+                text=detail,
+                bg="white",
+                fg="#64748b",
+                font=("Microsoft YaHei UI", 9),
+                justify="left",
+                anchor="w",
+                wraplength=570,
+            ).pack(fill="x", pady=(5, 0))
+
+        actions = tk.Frame(window, bg="#eef2f7", padx=18, pady=14)
+        actions.pack(fill="x")
+        tk.Button(
+            actions,
+            text="打开按键与语音设置",
+            command=self.open_settings,
+            relief="flat",
+            bg="#1677ff",
+            fg="white",
+            activebackground="#0d5fd4",
+            activeforeground="white",
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        ).pack(side="left")
+        tk.Button(
+            actions,
+            text="环境检查",
+            command=self.show_environment_check,
+            relief="flat",
+            bg="white",
+            fg="#152033",
+            activebackground="#e5eaf1",
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        ).pack(side="left", padx=(10, 0))
 
     def repair_audio(self) -> None:
         if getattr(self, "_audio_repair_running", False):

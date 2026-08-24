@@ -70,6 +70,10 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         terminationSignalSources.removeAll()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model.recoverHIDSettingsAfterActivation()
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool

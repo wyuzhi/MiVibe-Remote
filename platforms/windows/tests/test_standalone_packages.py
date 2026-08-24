@@ -37,7 +37,7 @@ class StandalonePackageTests(unittest.TestCase):
     def test_xiaomi_host_exposes_and_cleans_up_online_updates(self) -> None:
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
         self.assertIn("WinSparkleUpdater", text)
-        self.assertIn('text="检查更新"', text)
+        self.assertIn('("检查更新", self.check_updates)', text)
         self.assertIn('pystray.MenuItem("检查更新"', text)
         self.assertIn("self.root.after(1500, self._start_updater)", text)
         self.assertIn("self.updater.cleanup()", text)
@@ -47,11 +47,19 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("self._update_shutdown.dispatch_one(", text)
         self.assertIn("if not for_update:", text)
 
+    def test_xiaomi_host_exposes_environment_check_and_in_app_guide(self) -> None:
+        text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
+        self.assertIn("EnvironmentCheckWindow", text)
+        self.assertIn('text="环境检查"', text)
+        self.assertIn('text="使用教程"', text)
+        self.assertIn("def show_guide", text)
+        self.assertIn('self.root.geometry("820x540")', text)
+
     def test_default_build_only_targets_mivibe_remote(self) -> None:
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.16"', text)
+        self.assertIn('[string] $Version = "0.1.18"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)

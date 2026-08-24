@@ -2,7 +2,7 @@
 
 > 上游历史文档：协议排障仍可参考，但其中“无线麦”和 `Remote-Mic-*` 文件名属于上游版本。MiVibe 当前发行名称见本目录 `README.md`。
 
-本文适用于 MiVibe Remote 0.1.11。请先确认 Mac 为 Apple Silicon，系统版本为 macOS 15 或更高。
+本文适用于 MiVibe Remote 0.1.12。请先确认 Mac 为 Apple Silicon，系统版本为 macOS 15 或更高。
 
 ## 找不到或连不上遥控器
 
@@ -100,7 +100,7 @@ MiVibe 退出时会恢复启动前的小米遥控器按键映射。
 可使用同一 Release 提供的 `.sha256` 文件核对 DMG：
 
 ```bash
-shasum -a 256 -c MiVibe-Remote-0.1.11.dmg.sha256
+shasum -a 256 -c MiVibe-Remote-0.1.12.dmg.sha256
 ```
 
 ## 查看日志

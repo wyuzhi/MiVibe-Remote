@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BUILD_WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
 PROMOTE_WORKFLOW = ROOT / ".github" / "workflows" / "promote-updates.yml"
+WEBSITE_WORKFLOW = ROOT / ".github" / "workflows" / "prepare-website-update.yml"
 
 
 class UpdateWorkflowSafetyTests(unittest.TestCase):
@@ -13,6 +14,7 @@ class UpdateWorkflowSafetyTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.build = BUILD_WORKFLOW.read_text(encoding="utf-8")
         cls.promote = PROMOTE_WORKFLOW.read_text(encoding="utf-8")
+        cls.website = WEBSITE_WORKFLOW.read_text(encoding="utf-8")
 
     def test_candidate_build_never_publishes_the_stable_feed(self) -> None:
         self.assertNotIn("publish-update-feed", self.build)
@@ -36,6 +38,16 @@ class UpdateWorkflowSafetyTests(unittest.TestCase):
         self.assertIn("github.event.release.prerelease == false", self.promote)
         self.assertIn("startsWith(github.event.release.tag_name, 'v')", self.promote)
         self.assertIn("vars.UPDATE_BASE_URL != ''", self.promote)
+        self.assertIn("vars.UPDATE_PUBLISH_MODE == 's3'", self.promote)
+
+    def test_website_bundle_is_signed_without_exposing_the_private_key(self) -> None:
+        self.assertIn("PREPARE_WEBSITE_UPDATE", self.website)
+        self.assertIn("scripts/generate_appcasts.py", self.website)
+        self.assertIn("--expected-public-key", self.website)
+        self.assertIn("actions/upload-artifact@v4", self.website)
+        self.assertNotIn("echo $UPDATE_PRIVATE_KEY_BASE64", self.website)
+        job_env = self.website.split("    steps:", 1)[0]
+        self.assertNotIn("secrets.UPDATE_ED25519_PRIVATE_KEY_BASE64", job_env)
 
     def test_external_origin_and_signing_material_are_mandatory(self) -> None:
         for setting in (

@@ -66,7 +66,8 @@ struct RemoteButtonsTests {
     @Test func cyclePresetMovesInDeclaredOrderAndWrapsAround() {
         #expect(VoiceShortcutProfile.codex.next == .workBuddy)
         #expect(VoiceShortcutProfile.workBuddy.next == .weChat)
-        #expect(VoiceShortcutProfile.weChat.next == .codex)
+        #expect(VoiceShortcutProfile.weChat.next == .custom)
+        #expect(VoiceShortcutProfile.custom.next == .codex)
     }
 
     @Test func buttonActionsKeepRawValueCodableCompatibility() throws {
@@ -278,10 +279,65 @@ struct RemoteButtonsTests {
         #expect(settings.action(for: .tv) == .cyclePreset)
         #expect(settings.activePreset == .weChat)
 
+        #expect(settings.cyclePreset() == .custom)
+        #expect(settings.action(for: .power) == .openWeChat)
+        #expect(settings.action(for: .tv) == .cyclePreset)
+        #expect(settings.activePreset == .custom)
+
         #expect(settings.cyclePreset() == .codex)
         #expect(settings.action(for: .power) == .openCodex)
         #expect(settings.action(for: .tv) == .cyclePreset)
         #expect(settings.activePreset == .codex)
+    }
+
+    @Test func customPresetPersistsMappingsVoiceShortcutAndTriggerMode() throws {
+        let suiteName = "RemoteMicTests.customPreset.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 40,
+            modifierFlags: [.control, .option],
+            keyLabel: "K"
+        )
+
+        settings.setAction(.openClaude, for: .power)
+        settings.customVoiceShortcut = shortcut
+        settings.customVoiceTriggerMode = .toggle
+        settings.saveCurrentAsCustomPreset()
+        settings.applyCodexPreset()
+        settings.applyCustomPreset()
+
+        #expect(settings.activePreset == .custom)
+        #expect(settings.action(for: .power) == .openClaude)
+        #expect(settings.voiceShortcutProfile == .custom)
+        #expect(settings.voiceShortcutConfiguration.customShortcut == shortcut)
+        #expect(settings.voiceShortcutConfiguration.customTriggerMode == .toggle)
+
+        let restored = AppSettings(defaults: defaults)
+        restored.applyCustomPreset()
+        #expect(restored.action(for: .power) == .openClaude)
+        #expect(restored.voiceShortcutConfiguration.customShortcut == shortcut)
+        #expect(restored.voiceShortcutConfiguration.customTriggerMode == .toggle)
+    }
+
+    @Test func selectingCustomVoiceDoesNotOverwriteTheSavedCustomPreset() throws {
+        let suiteName = "RemoteMicTests.customVoiceKeepsPreset.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        settings.setAction(.openClaude, for: .power)
+        settings.saveCurrentAsCustomPreset()
+        settings.applyCodexPreset()
+
+        settings.selectVoiceShortcutProfile(.custom)
+        #expect(settings.action(for: .power) == .openCodex)
+        #expect(settings.activePreset == nil)
+
+        settings.applyCustomPreset()
+        #expect(settings.action(for: .power) == .openClaude)
+        #expect(settings.activePreset == .custom)
     }
 
     @Test func customizedPresetIsClearlyReportedAndPersistentVirtualInputDefaultsOn() throws {
@@ -417,6 +473,42 @@ struct RemoteButtonsTests {
             inputMonitoringGranted: true,
             accessibilityGranted: true
         ) == .none)
+    }
+
+    @Test func HIDPermissionsRecoverOnlyAfterARealRuntimePermissionChange() {
+        let denied = HIDPermissionSnapshot(
+            inputMonitoringGranted: false,
+            accessibilityGranted: false
+        )
+        let granted = HIDPermissionSnapshot(
+            inputMonitoringGranted: true,
+            accessibilityGranted: true
+        )
+
+        #expect(HIDPermissionRecoveryPolicy.shouldReapply(
+            started: true,
+            mappingEnabled: true,
+            previous: denied,
+            current: granted
+        ))
+        #expect(!HIDPermissionRecoveryPolicy.shouldReapply(
+            started: true,
+            mappingEnabled: true,
+            previous: granted,
+            current: granted
+        ))
+        #expect(!HIDPermissionRecoveryPolicy.shouldReapply(
+            started: false,
+            mappingEnabled: true,
+            previous: denied,
+            current: granted
+        ))
+        #expect(!HIDPermissionRecoveryPolicy.shouldReapply(
+            started: true,
+            mappingEnabled: false,
+            previous: denied,
+            current: granted
+        ))
     }
 
     @Test func savedBindingsMergeWithDefaults() throws {

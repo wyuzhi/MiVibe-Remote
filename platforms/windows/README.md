@@ -19,6 +19,8 @@ MiVibe Remote 的增量：
 - 普通按键支持单击自定义，返回键和音量键保留上游长按重复；
 - 使用 WinSparkle 每 24 小时自动检查一次已签名更新，主窗口和托盘也可手动“检查更新”；
 - 主窗口和托盘提供“关于 MiVibe Remote”，可查看作者联系方式、复制微信号并检查更新；
+- 主窗口改为状态控制台，新增只读环境检查：分别检查配置、VB-CABLE 两个端点、后台桥接、修复脚本和遥控器识别，并给出对应修复动作；
+- 新增应用内使用教程，覆盖首次安装、预设、触发方式和真实文本框测试；
 - 安装路径和开始菜单分组不再使用上游商业品牌。
 
 ## 构建要求
@@ -35,11 +37,11 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m unittest discover -s tests -v
 $env:MIVIBE_APPCAST_URL = "https://updates.example.com/windows-appcast.xml"
 $env:MIVIBE_UPDATE_ED25519_PUBLIC_KEY = "<base64-encoded-32-byte-public-key>"
-.\delivery\build-standalone-packages.ps1 -Version 0.1.16 -Product xiaomi -AllowUnsignedCandidate
+.\delivery\build-standalone-packages.ps1 -Version 0.1.18 -Product xiaomi -AllowUnsignedCandidate
 ```
 
 默认只构建 MiVibe Remote；生成的可执行文件和安装器分别为
-`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.16.exe`。`-Product` 参数仍可显式选择
+`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.18.exe`。`-Product` 参数仍可显式选择
 保留的其他上游独立产品，但它们不属于 MiVibe Remote 交付物。
 构建同时生成对应的 `.exe.sha256` 校验文件。
 
