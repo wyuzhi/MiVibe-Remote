@@ -172,7 +172,7 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.18 `
+  -Version 0.1.19 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```

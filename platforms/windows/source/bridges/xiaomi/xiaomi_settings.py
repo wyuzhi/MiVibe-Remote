@@ -7,11 +7,13 @@ import argparse
 import copy
 import ctypes
 from ctypes import wintypes
+import json
 import os
 import socket
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
+import uuid
 
 from .xiaomi_config import (
     APP_VERSION,
@@ -42,6 +44,8 @@ from .xiaomi_config import (
 
 APP_NAME = "MiVibe Remote 设置"
 DEFAULT_HUB_PORT = 28690
+SETTINGS_CONTROL_PORT_OFFSET = 1
+CONTROL_REQUEST_TIMEOUT = 6.0
 BG = "#eef2f7"
 CARD = "#ffffff"
 TEXT = "#152033"
@@ -246,12 +250,64 @@ def capture_encoding(capture: dict | None) -> str:
     return f"{prefix}VK 0x{int(vk):02X}  ·  SC 0x{int(scan):03X}  ·  {extension}"
 
 
-def send_hub_restart(port: int) -> None:
+def send_hub_restart(port: int, timeout: float = CONTROL_REQUEST_TIMEOUT) -> int:
+    request_id = uuid.uuid4().hex
+    request = json.dumps(
+        {
+            "op": "restart",
+            "bridge": "xiaomi",
+            "request_id": request_id,
+        }
+    ).encode("utf-8")
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-            client.sendto(b"RESTART:xiaomi", ("127.0.0.1", port))
-    except OSError:
-        pass
+            client.settimeout(timeout)
+            client.sendto(request, ("127.0.0.1", port))
+            response, _ = client.recvfrom(4096)
+    except (OSError, TimeoutError) as exc:
+        raise RuntimeError(
+            "主程序没有确认桥接重启，请回到 MiVibe 主界面点击“重启桥接”后重试"
+        ) from exc
+
+    try:
+        result = json.loads(response.decode("utf-8"))
+        if result.get("request_id") != request_id:
+            raise ValueError("restart response request id mismatch")
+        if not result.get("ok"):
+            raise ValueError(str(result.get("error") or "bridge restart failed"))
+        pid = int(result.get("pid") or 0)
+        if pid <= 0:
+            raise ValueError("bridge restart returned no worker pid")
+        return pid
+    except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"桥接重启未得到有效确认：{exc}") from exc
+
+
+def notify_existing_settings(port: int, timeout: float = 0.8) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+            client.settimeout(timeout)
+            client.sendto(b"SHOW", ("127.0.0.1", port))
+            response, _ = client.recvfrom(256)
+        return response == b"OK show"
+    except (OSError, TimeoutError):
+        return False
+
+
+def claim_settings_instance(hub_port: int) -> socket.socket | None:
+    port = hub_port + SETTINGS_CONTROL_PORT_OFFSET
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        server.bind(("127.0.0.1", port))
+    except OSError as exc:
+        server.close()
+        if notify_existing_settings(port):
+            return None
+        raise RuntimeError(
+            "按键设置窗口端口已被占用，但无法唤醒已有窗口"
+        ) from exc
+    server.settimeout(0.5)
+    return server
 
 
 class KbdLlHookStruct(ctypes.Structure):
@@ -576,9 +632,16 @@ class KeyboardShortcutCapture:
 
 
 class XiaomiSettingsWindow:
-    def __init__(self, root: tk.Tk, hub_port: int):
+    def __init__(
+        self,
+        root: tk.Tk,
+        hub_port: int,
+        instance_socket: socket.socket | None = None,
+    ):
         self.root = root
         self.hub_port = hub_port
+        self.instance_socket = instance_socket
+        self.instance_stop = threading.Event()
         self.config = load_config()
         self.keys_config = load_keys_config()
         self.working_preset = str(self.config.get("active_preset", "codex"))
@@ -649,6 +712,44 @@ class XiaomiSettingsWindow:
         self._build()
         self.select_button(self.selected_id)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self._start_instance_listener()
+
+    def _start_instance_listener(self) -> None:
+        if self.instance_socket is None:
+            return
+        server = self.instance_socket
+
+        def listen() -> None:
+            while not self.instance_stop.is_set():
+                try:
+                    payload, peer = server.recvfrom(256)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                if payload == b"SHOW":
+                    self.root.after(0, self._show_now)
+                    try:
+                        server.sendto(b"OK show", peer)
+                    except OSError:
+                        pass
+
+        threading.Thread(
+            target=listen,
+            name="xiaomi-settings-single-instance",
+            daemon=True,
+        ).start()
+
+    def _show_now(self) -> None:
+        self.root.state("normal")
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+        try:
+            self.root.attributes("-topmost", True)
+            self.root.after(250, lambda: self.root.attributes("-topmost", False))
+        except tk.TclError:
+            pass
 
     def _build(self) -> None:
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
@@ -1859,9 +1960,19 @@ class XiaomiSettingsWindow:
 
             save_config(self.config, CONFIG_PATH)
             save_keys_config(self.keys_config, KEYS_CONFIG_PATH)
-            send_hub_restart(self.hub_port)
+            try:
+                bridge_pid = send_hub_restart(self.hub_port)
+            except RuntimeError as exc:
+                self.save_status_var.set("配置已保存，但桥接进程没有确认应用")
+                messagebox.showerror(
+                    APP_NAME,
+                    "配置文件已经保存，但后台桥接没有重新加载。\n\n"
+                    f"{exc}\n\n"
+                    "在桥接重启成功前，旧快捷键仍可能继续生效。",
+                )
+                return
             self.save_status_var.set(
-                f"已保存小米遥控器 2：语音键 {format_keys(mic_keys) or '已关闭'} · {self.voice_trigger_mode.get()}"
+                f"已应用到桥接 PID {bridge_pid}：语音键 {format_keys(mic_keys) or '已关闭'} · {self.voice_trigger_mode.get()}"
             )
             self.select_button(self.selected_id)
             messagebox.showinfo(
@@ -1877,6 +1988,13 @@ class XiaomiSettingsWindow:
 
     def close(self) -> None:
         self.capture.cancel()
+        self.instance_stop.set()
+        if self.instance_socket is not None:
+            try:
+                self.instance_socket.close()
+            except OSError:
+                pass
+            self.instance_socket = None
         self.root.destroy()
 
 
@@ -1884,9 +2002,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--hub-port", type=int, default=DEFAULT_HUB_PORT)
     args = parser.parse_args(argv)
+    try:
+        instance_socket = claim_settings_instance(args.hub_port)
+    except RuntimeError as exc:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(APP_NAME, str(exc))
+        root.destroy()
+        return 1
+    if instance_socket is None:
+        return 0
     root = tk.Tk()
-    XiaomiSettingsWindow(root, args.hub_port)
-    root.mainloop()
+    try:
+        XiaomiSettingsWindow(root, args.hub_port, instance_socket)
+        root.mainloop()
+    finally:
+        try:
+            instance_socket.close()
+        except OSError:
+            pass
     return 0
 
 

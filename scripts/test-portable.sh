@@ -17,6 +17,7 @@ print "== Windows portable checks =="
   cd "$ROOT/platforms/windows"
   "$PYTHON" -m py_compile \
     source/standalone/xiaomi_main.py \
+    source/remote_bridge_hub.py \
     source/standalone/environment_check.py \
     source/bridges/xiaomi/xiaomi_config.py \
     source/bridges/xiaomi/xiaomi_settings.py \
@@ -25,6 +26,7 @@ print "== Windows portable checks =="
     "$PYTHON" -m ruff check \
       source/standalone/xiaomi_main.py \
       source/standalone/environment_check.py \
+      source/remote_bridge_hub.py \
       source/bridges/xiaomi \
       --select F
   else
@@ -33,6 +35,7 @@ print "== Windows portable checks =="
   "$PYTHON" -m unittest \
     tests.test_environment_check \
     tests.test_xiaomi_config \
+    tests.test_xiaomi_settings_control \
     tests.test_standalone_packages \
     -v
 )

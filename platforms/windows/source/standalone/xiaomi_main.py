@@ -19,7 +19,7 @@ import traceback
 
 
 APP_NAME = "MiVibe Remote"
-APP_VERSION = "0.1.18"
+APP_VERSION = "0.1.19"
 APP_ID = "MiVibeRemote"
 CONTROL_PORT = 31690
 
@@ -153,7 +153,7 @@ class XiaomiWorkers:
             )
             log(f"workers started audio={self.audio.pid} bridge={self.bridge.pid}")
 
-    def restart_bridge(self) -> None:
+    def restart_bridge(self) -> int:
         with self._lock:
             self._stop(self.bridge)
             self.bridge = self._spawn(
@@ -161,7 +161,15 @@ class XiaomiWorkers:
                 ["--config", str(CONFIG_PATH)],
                 LOG_DIR / "bridge.log",
             )
-            log(f"bridge restarted pid={self.bridge.pid}")
+            bridge_pid = int(self.bridge.pid)
+            time.sleep(0.15)
+            exit_code = self.bridge.poll()
+            if exit_code is not None:
+                raise RuntimeError(
+                    f"bridge exited during restart pid={bridge_pid} code={exit_code}"
+                )
+            log(f"bridge restarted pid={bridge_pid}")
+            return bridge_pid
 
     def stop(self) -> None:
         with self._lock:
@@ -464,9 +472,54 @@ class XiaomiApp:
                 except OSError:
                     break
                 command = payload.decode("utf-8", errors="replace").strip()
-                if command in {"RESTART:xiaomi", "RESTART"}:
-                    self.root.after(0, self.workers.restart_bridge)
-                    response = b"OK restart"
+                request_id = ""
+                request = None
+                try:
+                    parsed = json.loads(command)
+                    if isinstance(parsed, dict):
+                        request = parsed
+                        request_id = str(parsed.get("request_id") or "")
+                except json.JSONDecodeError:
+                    pass
+                if (
+                    request is not None
+                    and request.get("op") == "restart"
+                    and request.get("bridge") == "xiaomi"
+                    and request_id
+                ):
+                    try:
+                        bridge_pid = self.workers.restart_bridge()
+                        response = json.dumps(
+                            {
+                                "ok": True,
+                                "request_id": request_id,
+                                "pid": bridge_pid,
+                            }
+                        ).encode("utf-8")
+                        log(
+                            f"settings restart confirmed request={request_id} "
+                            f"bridge={bridge_pid}"
+                        )
+                    except Exception as exc:
+                        response = json.dumps(
+                            {
+                                "ok": False,
+                                "request_id": request_id,
+                                "error": str(exc),
+                            }
+                        ).encode("utf-8")
+                        log(
+                            f"settings restart failed request={request_id} "
+                            f"error={type(exc).__name__}: {exc}"
+                        )
+                elif command in {"RESTART:xiaomi", "RESTART"}:
+                    try:
+                        bridge_pid = self.workers.restart_bridge()
+                        response = f"OK restart pid={bridge_pid}".encode("ascii")
+                    except Exception as exc:
+                        response = f"ERROR restart {type(exc).__name__}".encode(
+                            "ascii", errors="replace"
+                        )
                 elif command == "SHOW":
                     self.root.after(0, self.show)
                     response = b"OK show"
@@ -481,6 +534,9 @@ class XiaomiApp:
         threading.Thread(target=serve, name="xiaomi-control", daemon=True).start()
 
     def open_settings(self) -> None:
+        self.settings_processes = [
+            process for process in self.settings_processes if process.poll() is None
+        ]
         process = subprocess.Popen(
             role_command("xiaomi-settings", ["--hub-port", str(CONTROL_PORT)]),
             cwd=str(Path(sys.executable).resolve().parent),

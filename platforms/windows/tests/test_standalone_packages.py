@@ -55,11 +55,37 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("def show_guide", text)
         self.assertIn('self.root.geometry("820x540")', text)
 
+    def test_xiaomi_settings_restart_is_confirmed_by_both_windows_hosts(self) -> None:
+        settings = (
+            SOURCE / "bridges" / "xiaomi" / "xiaomi_settings.py"
+        ).read_text(encoding="utf-8")
+        standalone = (SOURCE / "standalone" / "xiaomi_main.py").read_text(
+            encoding="utf-8"
+        )
+        legacy_hub = (SOURCE / "remote_bridge_hub.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"request_id": request_id', settings)
+        self.assertIn("client.recvfrom(4096)", settings)
+        self.assertIn("settings restart confirmed", standalone)
+        self.assertIn('"restart_sync"', legacy_hub)
+        self.assertIn("done.wait(8.0)", legacy_hub)
+
+    def test_xiaomi_settings_window_is_single_instance(self) -> None:
+        text = (
+            SOURCE / "bridges" / "xiaomi" / "xiaomi_settings.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("def claim_settings_instance", text)
+        self.assertIn("notify_existing_settings(port)", text)
+        self.assertIn('name="xiaomi-settings-single-instance"', text)
+
     def test_default_build_only_targets_mivibe_remote(self) -> None:
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.18"', text)
+        self.assertIn('[string] $Version = "0.1.19"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)

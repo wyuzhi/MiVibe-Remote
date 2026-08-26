@@ -151,6 +151,7 @@ jobs:
           python -m ruff check
           source/standalone/xiaomi_main.py
           source/standalone/environment_check.py
+          source/remote_bridge_hub.py
           source/bridges/xiaomi
           --select F
       - name: Ensure Inno Setup is available
@@ -164,7 +165,7 @@ jobs:
         shell: pwsh
         run: >
           .\delivery\build-standalone-packages.ps1
-          -Version 0.1.18
+          -Version 0.1.19
           -Product xiaomi
           -AllowUnsignedCandidate
       - name: Upload Windows candidate

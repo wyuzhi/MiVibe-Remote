@@ -355,10 +355,13 @@ class ManagedBridge:
             self.log_stream = None
         app_log(f"stopped {self.spec.bridge_id} code={self.last_exit_code}")
 
-    def restart(self) -> None:
+    def restart(self) -> int:
         self.stop()
         time.sleep(0.2)
         self.start()
+        if self.process is None or self.process.poll() is not None:
+            raise RuntimeError(f"{self.spec.bridge_id} failed to restart")
+        return int(self.process.pid)
 
     def observe_exit(self) -> None:
         if self.process is None or self.process.poll() is None:
@@ -496,11 +499,11 @@ class BridgeManager:
                 bridge.restart_after = time.monotonic() + 5.0
                 app_log(f"auto-restart error {bridge_id}: {exc}")
 
-    def restart(self, bridge_id: str) -> None:
+    def restart(self, bridge_id: str) -> int:
         bridge = self.bridges[bridge_id]
         self.config.setdefault("enabled", {})[bridge_id] = True
         save_config(self.config)
-        bridge.restart()
+        return bridge.restart()
 
     def restart_all(self) -> None:
         if not self.audio_router.alive:
@@ -564,7 +567,7 @@ class HubApplication:
         self.toggle_labels: dict[str, tk.StringVar] = {}
         self.toggle_buttons: dict[str, ttk.Button] = {}
         self.tray: pystray.Icon | None = None
-        self.command_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        self.command_queue: queue.Queue[tuple[str, object | None]] = queue.Queue()
         self.settings_processes: list[subprocess.Popen] = []
         self._build_window()
         self._start_tray()
@@ -771,13 +774,47 @@ class HubApplication:
                 server.settimeout(0.5)
                 while not self.closing:
                     try:
-                        payload, peer = server.recvfrom(64)
+                        payload, peer = server.recvfrom(4096)
                     except socket.timeout:
                         continue
                     except ConnectionResetError:
                         continue
                     command = payload.decode("utf-8", errors="ignore").strip()
-                    if command == "SHOW":
+                    request = None
+                    try:
+                        parsed = json.loads(command)
+                        if isinstance(parsed, dict):
+                            request = parsed
+                    except json.JSONDecodeError:
+                        pass
+                    if (
+                        request is not None
+                        and request.get("op") == "restart"
+                        and request.get("bridge") in self.manager.bridges
+                        and request.get("request_id")
+                    ):
+                        request_id = str(request["request_id"])
+                        done = threading.Event()
+                        outcome: dict[str, object] = {}
+                        self.command_queue.put(
+                            (
+                                "restart_sync",
+                                (
+                                    str(request["bridge"]),
+                                    request_id,
+                                    done,
+                                    outcome,
+                                ),
+                            )
+                        )
+                        if not done.wait(8.0):
+                            outcome.update(
+                                ok=False,
+                                request_id=request_id,
+                                error="hub timed out while restarting bridge",
+                            )
+                        server.sendto(json.dumps(outcome).encode("utf-8"), peer)
+                    elif command == "SHOW":
                         self.command_queue.put(("show", None))
                     elif command.startswith("RESTART:"):
                         bridge_id = command.partition(":")[2].strip().lower()
@@ -848,6 +885,11 @@ class HubApplication:
             "hanvon": ("--hub-port", str(SHOW_PORT)),
         }
         try:
+            self.settings_processes = [
+                process
+                for process in self.settings_processes
+                if process.poll() is None
+            ]
             process = subprocess.Popen(
                 role_command(roles[bridge_id], arguments[bridge_id]),
                 cwd=str(application_root()),
@@ -900,20 +942,44 @@ class HubApplication:
             return
         while True:
             try:
-                command, bridge_id = self.command_queue.get_nowait()
+                command, payload = self.command_queue.get_nowait()
             except queue.Empty:
                 break
             if command == "show":
                 self._show_now()
-            elif command == "restart" and bridge_id:
+            elif command == "restart" and isinstance(payload, str):
                 try:
-                    self.manager.restart(bridge_id)
-                    self.enabled_vars[bridge_id].set(True)
-                    self._refresh_toggle(bridge_id)
+                    self.manager.restart(payload)
+                    self.enabled_vars[payload].set(True)
+                    self._refresh_toggle(payload)
                 except Exception as exc:
+                    app_log(f"remote restart error {payload}: {exc}")
+            elif command == "restart_sync" and isinstance(payload, tuple):
+                bridge_id, request_id, done, outcome = payload
+                try:
+                    bridge_pid = self.manager.restart(str(bridge_id))
+                    outcome.update(
+                        ok=True,
+                        request_id=str(request_id),
+                        pid=bridge_pid,
+                    )
+                    self.enabled_vars[str(bridge_id)].set(True)
+                    self._refresh_toggle(str(bridge_id))
+                    app_log(
+                        f"settings restart confirmed request={request_id} "
+                        f"bridge={bridge_pid}"
+                    )
+                except Exception as exc:
+                    outcome.update(
+                        ok=False,
+                        request_id=str(request_id),
+                        error=str(exc),
+                    )
                     app_log(f"remote restart error {bridge_id}: {exc}")
-            elif command == "settings" and bridge_id:
-                self._open_settings(bridge_id)
+                finally:
+                    done.set()
+            elif command == "settings" and isinstance(payload, str):
+                self._open_settings(payload)
             elif command == "exit":
                 self.exit()
                 return
