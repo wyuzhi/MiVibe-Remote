@@ -131,6 +131,7 @@ jobs:
           python scripts/validate_update_promotion.py expected-assets \
             --release-tag "$RELEASE_TAG" \
             --mac-plist platforms/macos/Resources/Info.plist \
+            --windows-source platforms/windows/source/standalone/xiaomi_main.py \
             --output updates/promotion-metadata.json
           echo "mac_build_version=$(jq -r .macBuildVersion updates/promotion-metadata.json)" >> "$GITHUB_OUTPUT"
           echo "mac_filename=$(jq -r .macFilename updates/promotion-metadata.json)" >> "$GITHUB_OUTPUT"

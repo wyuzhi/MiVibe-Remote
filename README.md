@@ -35,7 +35,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
-- macOS：`MiVibe-Remote-0.1.12.dmg`
+- macOS：`MiVibe-Remote-0.1.13.dmg`
 - Windows：`MiVibeRemoteSetup-0.1.19.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
@@ -54,7 +54,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 15 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.12.dmg`。
+1. 下载并打开 `MiVibe-Remote-0.1.13.dmg`。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
 4. 首次启动后，在“权限”页面依次允许蓝牙、麦克风、输入监控和辅助功能。
@@ -68,11 +68,12 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 应用左侧“教程”提供完整的首次设置、真实语音测试和故障排查步骤。
 
 MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理解或修改“音频路由”。
-默认开启“常驻虚拟麦克风”：MiVibe 运行期间系统输入保持为 `MiRemoteV 2ch`；
-平时由 MacBook 内置麦克风向它供音，按住遥控器语音键时由遥控器在应用内部
-接管，松开后回到 MacBook 麦克风。整个按键过程不再切换系统音频设备，连接
-蓝牙耳机也不会把耳机麦克风带入语音链路。退出 MiVibe 后恢复启动前的输入设备，
-系统默认输出始终不会被修改。
+默认开启“保持虚拟麦克风为默认输入”：MiVibe 运行期间系统输入保持为
+`MiRemoteV 2ch`，但空闲时不会打开音频采集通道。按住遥控器语音键后才启动
+虚拟通道并传输遥控器声音，尾音发送完成后立即关闭，因此不需要在按键时临时
+切换系统输入，也不会让橙色麦克风隐私标记常驻。只有用户主动开启“电脑麦克风
+透传”后，MiVibe 才会持续采集 MacBook 麦克风。退出 MiVibe 后恢复启动前的
+输入设备，系统默认输出始终不会被修改。
 
 ## Windows 安装
 

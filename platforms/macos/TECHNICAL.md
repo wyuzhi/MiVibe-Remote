@@ -56,7 +56,7 @@ ATVV 通道为：
 
 ## 音频输出
 
-`StableVirtualAudioOutput` 使用 CoreAudio `AudioDeviceIOProc` 直接打开 `MiRemoteV 2ch`，避免默认输入为虚拟麦克风、默认输出为蓝牙耳机时由 `AVAudioEngine` 触发系统聚合设备和路由重建。它接收两种互斥音源：经 `AVCaptureSession` 明确采集的 MacBook 内置麦克风，以及 16 kHz 遥控器 PCM；两者统一重采样到虚拟设备的 48 kHz 输出。MiVibe 运行期间系统默认输入保持为 `MiRemoteV 2ch`；空闲时只写入电脑麦克风，遥控器语音开始时清空电脑队列并由遥控器接管，尾音实际消费完成后再恢复电脑音源。整个按键过程不修改 CoreAudio 默认输入，系统默认输出始终不变。退出应用时恢复启动前的输入设备。
+`StableVirtualAudioOutput` 使用 CoreAudio `AudioDeviceIOProc` 直接打开 `MiRemoteV 2ch`，避免默认输入为虚拟麦克风、默认输出为蓝牙耳机时由 `AVAudioEngine` 触发系统聚合设备和路由重建。MiVibe 运行期间系统默认输入保持为 `MiRemoteV 2ch`，但默认空闲状态不创建 IOProc。遥控器语音开始时按需打开虚拟通道，使用短暂预缓存补发通道启动期间收到的 16 kHz PCM；尾音实际消费完成后关闭通道。整个按键过程不修改 CoreAudio 默认输入，系统默认输出始终不变。只有用户主动开启电脑麦克风透传时，才会保持虚拟通道并通过 `AVCaptureSession` 明确采集 MacBook 内置麦克风。退出应用时恢复启动前的输入设备。
 
 测试音同样只在内存中生成。只有音频设备已经配置、小米遥控器未在传输语音且没有其他测试音播放时才允许发送；真实语音开始或设备重新配置时会取消测试音，避免阻塞语音缓冲。
 

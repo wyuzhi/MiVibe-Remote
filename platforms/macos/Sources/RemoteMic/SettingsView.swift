@@ -367,7 +367,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Toggle("常驻虚拟麦克风", isOn: Binding(
+                        Toggle("保持虚拟麦克风为默认输入", isOn: Binding(
                             get: { settings.headsetCompatibilityEnabled },
                             set: { enabled in
                                 settings.headsetCompatibilityEnabled = enabled

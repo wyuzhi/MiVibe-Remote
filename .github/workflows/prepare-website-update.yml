@@ -73,6 +73,7 @@ jobs:
           python scripts/validate_update_promotion.py expected-assets \
             --release-tag "$RELEASE_TAG" \
             --mac-plist platforms/macos/Resources/Info.plist \
+            --windows-source platforms/windows/source/standalone/xiaomi_main.py \
             --output updates/promotion-metadata.json
           jq -r '.assets[].name' updates/release.json > updates/release-asset-names.txt
           python scripts/validate_update_promotion.py check-release-assets \

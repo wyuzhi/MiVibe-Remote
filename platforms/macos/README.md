@@ -19,10 +19,12 @@ MiVibe Remote 的增量：
   - WorkBuddy 语音键：ATVV 开始和结束时分别点按一次 `⌘D`。
   - 自定义语音键：录入任意快捷键，并选择按住型或开关型；原生语音键仍负责遥控器收音。
 - 新增应用内使用教程，以及权限变化后的 HID 自动恢复；
-- 恢复 `0.1.6` 的常驻虚拟麦克风路径：MiVibe 运行期间把系统默认输入保持为
+- 保持虚拟麦克风为默认输入：MiVibe 运行期间把系统默认输入保持为
   `MiRemoteV 2ch`，退出时恢复原麦克风；
-- 空闲时把 MacBook 内置麦克风转发到 `MiRemoteV 2ch`，按住遥控器语音键时
-  在应用内部由遥控器接管，松开后立即回到 MacBook 麦克风；
+- 空闲时关闭虚拟音频通道，按住遥控器语音键后才启动并传输声音，尾音发送完成
+  后立即关闭，避免橙色麦克风隐私标记常驻；
+- 电脑麦克风透传改为默认关闭的可选功能，只有用户主动开启后才会持续采集
+  MacBook 内置麦克风；
 - 只缓存目标应用打开听写所需的极短开头语音，不再等待系统输入设备切换。
 
 ## 构建要求
@@ -64,8 +66,8 @@ Installer、Downloader、Autoupdate、Updater、framework；其中只有 Downloa
 entitlements。验证脚本同时检查运行时 rpath、嵌套签名和 Autoupdate 没有残留 Sparkle 的
 上游 application identifier。
 
-当前仓库尚未配置 Developer ID Application 证书和 Apple 公证流程，所以 ad-hoc 产物只可用于
-本地开发测试。**向会员发布在线更新前，Developer ID 签名、DMG 公证与 stapling 是发布阻塞项。**
+当前仓库尚未配置 Developer ID Application 证书和 Apple 公证流程，公开安装包使用
+ad-hoc 签名。用户首次安装或更新后需要在“隐私与安全性”中确认打开。
 
 上游完整使用说明见 [UPSTREAM_README.md](UPSTREAM_README.md)，来源与许可证见仓库根目录
 `UPSTREAM.md`、本目录 `COPYRIGHT.md`、`THIRD_PARTY_NOTICES.md` 和 `LICENSE.md`。

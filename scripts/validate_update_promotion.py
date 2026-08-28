@@ -37,13 +37,23 @@ def _compare_numeric_versions(left: str, right: str, *, label: str) -> int:
     )
 
 
-def expected_assets(release_tag: str, mac_plist: Path) -> dict[str, str]:
+def _windows_version(source: Path) -> str:
+    text = source.read_text(encoding="utf-8")
+    match = re.search(r'^APP_VERSION\s*=\s*"(?P<version>[^"]+)"', text, re.MULTILINE)
+    if match is None or not STABLE_VERSION_RE.fullmatch(match.group("version")):
+        raise ValueError("Windows APP_VERSION must be a stable numeric version")
+    return match.group("version")
+
+
+def expected_assets(
+    release_tag: str, mac_plist: Path, windows_source: Path
+) -> dict[str, str]:
     tag_match = re.fullmatch(r"v(?P<version>[0-9]+(?:\.[0-9]+){2})", release_tag)
     if tag_match is None:
         raise ValueError(
             "stable release tag must be vMAJOR.MINOR.PATCH with numeric components"
         )
-    windows_version = tag_match.group("version")
+    windows_version = _windows_version(windows_source)
 
     with mac_plist.open("rb") as stream:
         plist = plistlib.load(stream)
@@ -158,12 +168,17 @@ def validate_upgrade(
         ("macOS CFBundleVersion", new_mac, current_mac),
         ("Windows version", new_windows, current_windows),
     )
+    increased = False
     for label, new_version, current_version in comparisons:
-        if _compare_numeric_versions(new_version, current_version, label=label) <= 0:
+        comparison = _compare_numeric_versions(new_version, current_version, label=label)
+        if comparison < 0:
             raise ValueError(
-                f"{label} must strictly increase: current={current_version}, "
+                f"{label} cannot go backwards: current={current_version}, "
                 f"new={new_version}"
             )
+        increased = increased or comparison > 0
+    if not increased:
+        raise ValueError("at least one platform version must strictly increase")
 
 
 def _write_json(payload: dict[str, str], path: Path) -> None:
@@ -178,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     expected = subparsers.add_parser("expected-assets")
     expected.add_argument("--release-tag", required=True)
     expected.add_argument("--mac-plist", type=Path, required=True)
+    expected.add_argument("--windows-source", type=Path, required=True)
     expected.add_argument("--output", type=Path, required=True)
 
     release_assets = subparsers.add_parser("check-release-assets")
@@ -198,7 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace) -> int:
     if args.command == "expected-assets":
-        _write_json(expected_assets(args.release_tag, args.mac_plist), args.output)
+        _write_json(
+            expected_assets(args.release_tag, args.mac_plist, args.windows_source),
+            args.output,
+        )
         return 0
     if args.command == "check-release-assets":
         metadata = _read_metadata(args.metadata)
