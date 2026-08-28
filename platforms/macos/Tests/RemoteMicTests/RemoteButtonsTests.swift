@@ -279,15 +279,76 @@ struct RemoteButtonsTests {
         #expect(settings.action(for: .tv) == .cyclePreset)
         #expect(settings.activePreset == .weChat)
 
-        #expect(settings.cyclePreset() == .custom)
-        #expect(settings.action(for: .power) == .openWeChat)
-        #expect(settings.action(for: .tv) == .cyclePreset)
-        #expect(settings.activePreset == .custom)
-
         #expect(settings.cyclePreset() == .codex)
         #expect(settings.action(for: .power) == .openCodex)
         #expect(settings.action(for: .tv) == .cyclePreset)
         #expect(settings.activePreset == .codex)
+
+        #expect(settings.cyclePreset() == .workBuddy)
+        #expect(settings.action(for: .power) == .openWorkBuddy)
+        #expect(settings.action(for: .tv) == .cyclePreset)
+        #expect(settings.activePreset == .workBuddy)
+    }
+
+    @Test func namedLocalPresetsCanBeCreatedEditedDeletedAndRestored() throws {
+        let suiteName = "RemoteMicTests.namedLocalPresets.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 8,
+            modifierFlags: [.command, .shift],
+            keyLabel: "C"
+        )
+
+        settings.setAction(.openClaude, for: .power)
+        settings.customVoiceShortcut = shortcut
+        settings.customVoiceTriggerMode = .toggle
+        settings.selectVoiceShortcutProfile(.custom)
+        let writing = try #require(settings.createLocalPreset(named: "写作"))
+
+        settings.applyWorkBuddyPreset()
+        settings.setAction(.openWeChat, for: .power)
+        let meeting = try #require(settings.createLocalPreset(named: "会议"))
+
+        #expect(settings.localPresets.map(\.name) == ["写作", "会议"])
+        #expect(!settings.isLocalPresetNameAvailable("写作"))
+        #expect(settings.renameLocalPreset(id: writing.id, to: "创作"))
+        #expect(!settings.renameLocalPreset(id: meeting.id, to: "创作"))
+
+        settings.applyLocalPreset(id: writing.id)
+        #expect(settings.activeLocalPreset?.name == "创作")
+        #expect(settings.action(for: .power) == .openClaude)
+        #expect(settings.voiceShortcutConfiguration.customShortcut == shortcut)
+        #expect(settings.voiceShortcutConfiguration.customTriggerMode == .toggle)
+
+        settings.setAction(.openCursor, for: .tv)
+        let restored = AppSettings(defaults: defaults)
+        restored.applyLocalPreset(id: writing.id)
+        #expect(restored.action(for: .tv) == .openCursor)
+        #expect(restored.activeLocalPreset?.name == "创作")
+
+        restored.deleteLocalPreset(id: meeting.id)
+        #expect(restored.localPresets.map(\.name) == ["创作"])
+    }
+
+    @Test func cyclePresetIncludesEveryNamedLocalPresetInCreationOrder() throws {
+        let suiteName = "RemoteMicTests.namedPresetCycle.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        let first = try #require(settings.createLocalPreset(named: "剪辑"))
+        settings.applyWorkBuddyPreset()
+        let second = try #require(settings.createLocalPreset(named: "会议"))
+        settings.applyWeChatPreset()
+
+        #expect(settings.cyclePreset() == .custom)
+        #expect(settings.activeLocalPresetID == first.id)
+        #expect(settings.cyclePreset() == .custom)
+        #expect(settings.activeLocalPresetID == second.id)
+        #expect(settings.cyclePreset() == .codex)
+        #expect(settings.activeLocalPresetID == nil)
     }
 
     @Test func customPresetPersistsMappingsVoiceShortcutAndTriggerMode() throws {

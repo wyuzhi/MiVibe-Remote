@@ -68,6 +68,18 @@ private struct ShortcutEditingTarget: Identifiable {
     var id: String { "\(button.rawValue)-\(trigger.rawValue)" }
 }
 
+private enum LocalPresetEditorContext: Identifiable {
+    case create(UUID)
+    case edit(LocalPreset)
+
+    var id: String {
+        switch self {
+        case .create(let id): return "create-\(id.uuidString)"
+        case .edit(let preset): return "edit-\(preset.id.uuidString)"
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: BridgeAppModel
     @ObservedObject var settings: AppSettings
@@ -78,8 +90,7 @@ struct SettingsView: View {
     @State private var selectedRemoteButton: RemoteButton = .ok
     @State private var shortcutEditingTarget: ShortcutEditingTarget?
     @State private var voiceShortcutEditorPresented = false
-    @State private var customPresetSaved = false
-    @State private var customPresetFeedbackTask: Task<Void, Never>?
+    @State private var localPresetEditorContext: LocalPresetEditorContext?
     @State private var bluetoothAuthorization = CBManager.authorization
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
@@ -135,6 +146,36 @@ struct SettingsView: View {
             ) { shortcut in
                 settings.customVoiceShortcut = shortcut
                 settings.selectVoiceShortcutProfile(.custom)
+            }
+        }
+        .sheet(item: $localPresetEditorContext) { context in
+            switch context {
+            case .create:
+                LocalPresetEditorSheet(
+                    title: "新增本地预设",
+                    initialName: "",
+                    existingNames: settings.localPresets.map(\.name),
+                    onSave: { name in
+                        _ = settings.createLocalPreset(named: name)
+                    }
+                )
+            case .edit(let preset):
+                LocalPresetEditorSheet(
+                    title: "编辑本地预设",
+                    initialName: preset.name,
+                    existingNames: settings.localPresets
+                        .filter { $0.id != preset.id }
+                        .map(\.name),
+                    onSave: { name in
+                        _ = settings.renameLocalPreset(id: preset.id, to: name)
+                    },
+                    onOverwrite: {
+                        _ = settings.overwriteLocalPresetWithCurrentSettings(id: preset.id)
+                    },
+                    onDelete: {
+                        settings.deleteLocalPreset(id: preset.id)
+                    }
+                )
             }
         }
     }
@@ -468,7 +509,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("按键动作")
                                     .font(.headline)
-                                Text("点击或按下左侧实体按键定位；修改后自动保存。将任意键设为“循环切换预设”，即可按 Codex → WorkBuddy → 微信 → 自定义循环。")
+                                Text("点击或按下左侧实体按键定位；修改后自动保存。循环切换顺序为 Codex → WorkBuddy → 微信 → 本地预设。")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -531,22 +572,28 @@ struct SettingsView: View {
     }
 
     private var mappingPresetControls: some View {
-        HStack(spacing: 8) {
-            StatusPill(
-                text: settings.customMappingEnabled ? "已启用" : "未启用",
-                tint: settings.customMappingEnabled ? .green : .secondary
-            )
-            Button("恢复默认") {
-                settings.resetBindings()
-                selectedRemoteButton = .ok
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                StatusPill(
+                    text: settings.customMappingEnabled ? "已启用" : "未启用",
+                    tint: settings.customMappingEnabled ? .green : .secondary
+                )
+                Button("恢复默认") {
+                    settings.resetBindings()
+                    selectedRemoteButton = .ok
+                }
+                .adaptiveGlassButtonStyle()
+                presetButton(.codex)
+                presetButton(.workBuddy)
+                presetButton(.weChat)
+                ForEach(settings.localPresets) { preset in
+                    localPresetButton(preset)
+                }
+                localPresetManagementMenu
             }
-            .adaptiveGlassButtonStyle()
-            presetButton(.codex)
-            presetButton(.workBuddy)
-            presetButton(.weChat)
-            presetButton(.custom)
+            .padding(.vertical, 2)
         }
-        .fixedSize(horizontal: true, vertical: false)
+        .scrollClipDisabled()
     }
 
     private var voiceShortcutPanel: some View {
@@ -611,40 +658,21 @@ struct SettingsView: View {
                     .frame(width: 92)
                     .help(settings.customVoiceTriggerMode.helpText)
 
-                    Button {
-                        settings.saveCurrentAsCustomPreset()
-                        showCustomPresetSavedFeedback()
-                    } label: {
-                        Label(
-                            customPresetSaved ? "已保存" : "保存当前为自定义预设",
-                            systemImage: customPresetSaved
-                                ? "checkmark.circle.fill"
-                                : "square.and.arrow.down"
-                        )
-                    }
-                    .adaptiveProminentGlassButtonStyle()
                 } else {
                     Text(settings.voiceShortcutDisplayName)
                         .font(.system(.body, design: .rounded).weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 74)
                 }
+
+                Button {
+                    localPresetEditorContext = .create(UUID())
+                } label: {
+                    Label("保存为新预设", systemImage: "plus.circle.fill")
+                }
+                .adaptiveProminentGlassButtonStyle()
         }
         .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func showCustomPresetSavedFeedback() {
-        customPresetFeedbackTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.16)) {
-            customPresetSaved = true
-        }
-        customPresetFeedbackTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.16)) {
-                customPresetSaved = false
-            }
-        }
     }
 
     @ViewBuilder
@@ -844,7 +872,7 @@ struct SettingsView: View {
                         GuideStepRow(
                             number: 3,
                             title: "选择预设或自定义",
-                            detail: "Codex、WorkBuddy、微信可以一键套用；自定义预设会保存普通按键、双击/长按和语音快捷键。",
+                            detail: "Codex、WorkBuddy、微信可以一键套用；本地预设可自行命名、继续新增和编辑，并保存普通按键、双击/长按及语音快捷键。",
                             symbol: "slider.horizontal.3"
                         )
                         GuideStepRow(
@@ -1092,6 +1120,9 @@ struct SettingsView: View {
     }
 
     private var currentPresetStatus: String {
+        if let preset = settings.activeLocalPreset {
+            return "\(preset.name) 模式"
+        }
         if let preset = settings.activePreset {
             return "\(preset.displayName) 模式"
         }
@@ -1125,11 +1156,176 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private func localPresetButton(_ preset: LocalPreset) -> some View {
+        let isActive = settings.activeLocalPresetID == preset.id
+        if isActive {
+            Button {
+                settings.applyLocalPreset(id: preset.id)
+                selectedRemoteButton = .power
+            } label: {
+                Label("\(preset.name) 已启用", systemImage: "checkmark.circle.fill")
+                    .lineLimit(1)
+            }
+            .adaptiveProminentGlassButtonStyle()
+        } else {
+            Button {
+                settings.applyLocalPreset(id: preset.id)
+                selectedRemoteButton = .power
+            } label: {
+                Text(preset.name)
+                    .lineLimit(1)
+            }
+            .adaptiveGlassButtonStyle()
+        }
+    }
+
+    private var localPresetManagementMenu: some View {
+        Menu {
+            Button("新增预设…", systemImage: "plus") {
+                localPresetEditorContext = .create(UUID())
+            }
+            if let active = settings.activeLocalPreset {
+                Button("保存对“\(active.name)”的修改", systemImage: "square.and.arrow.down") {
+                    _ = settings.overwriteLocalPresetWithCurrentSettings(id: active.id)
+                }
+            }
+            if !settings.localPresets.isEmpty {
+                Divider()
+                ForEach(settings.localPresets) { preset in
+                    Button("编辑“\(preset.name)”…", systemImage: "pencil") {
+                        localPresetEditorContext = .edit(preset)
+                    }
+                }
+            }
+        } label: {
+            Label("管理预设", systemImage: "ellipsis.circle")
+        }
+        .adaptiveGlassButtonStyle()
+    }
+
     private func refreshRuntimeStates() {
         bluetoothAuthorization = CBManager.authorization
         inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
         accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
         installedApplicationBundleIdentifiers = PresetApplication.installedBundleIdentifiers
+    }
+}
+
+private struct LocalPresetEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let existingNames: [String]
+    let onSave: (String) -> Void
+    let onOverwrite: (() -> Void)?
+    let onDelete: (() -> Void)?
+
+    @State private var name: String
+
+    init(
+        title: String,
+        initialName: String,
+        existingNames: [String],
+        onSave: @escaping (String) -> Void,
+        onOverwrite: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.existingNames = existingNames
+        self.onSave = onSave
+        self.onOverwrite = onOverwrite
+        self.onDelete = onDelete
+        _name = State(initialValue: initialName)
+    }
+
+    private var normalizedName: String {
+        String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
+    }
+
+    private var nameIsDuplicate: Bool {
+        existingNames.contains {
+            $0.localizedCaseInsensitiveCompare(normalizedName) == .orderedSame
+        }
+    }
+
+    private var canSave: Bool {
+        !normalizedName.isEmpty && !nameIsDuplicate
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.title2.bold())
+                Text("预设会保存在这台 Mac，并包含当前按键映射、双击/长按动作和语音快捷键。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("预设名称")
+                    .font(.headline)
+                TextField("例如：剪辑、会议、微信听写", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: name) { _, value in
+                        if value.count > 20 {
+                            name = String(value.prefix(20))
+                        }
+                    }
+                HStack {
+                    if nameIsDuplicate {
+                        Text("名称已存在，请换一个名称")
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("最多 20 个字符")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("\(name.count)/20")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+
+            if onOverwrite != nil || onDelete != nil {
+                Divider()
+                HStack {
+                    if let onDelete {
+                        Button("删除预设", role: .destructive) {
+                            onDelete()
+                            dismiss()
+                        }
+                    }
+                    Spacer()
+                    if let onOverwrite {
+                        Button("用当前配置覆盖") {
+                            guard canSave else { return }
+                            onSave(normalizedName)
+                            onOverwrite()
+                            dismiss()
+                        }
+                        .help("用当前页面中的全部按键和语音设置替换这个预设")
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(onOverwrite == nil ? "创建预设" : "保存名称") {
+                    guard canSave else { return }
+                    onSave(normalizedName)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+                .adaptiveProminentGlassButtonStyle()
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
     }
 }
 
