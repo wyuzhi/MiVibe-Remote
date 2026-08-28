@@ -45,6 +45,8 @@ struct AppLifecycleTests {
         #expect(settingsSource.contains("title: \"使用教程\""))
         #expect(settingsSource.contains("Text(\"语音键动作\")"))
         #expect(settingsSource.contains("保存当前为自定义预设"))
+        #expect(settingsSource.contains("customPresetSaved ? \"已保存\""))
+        #expect(settingsSource.contains("showCustomPresetSavedFeedback()"))
         #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
         #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))
         #expect(appSource.contains("NotificationCenter.default.post(name: .showRemoteMicAbout"))

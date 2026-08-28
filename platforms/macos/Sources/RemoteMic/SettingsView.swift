@@ -78,6 +78,8 @@ struct SettingsView: View {
     @State private var selectedRemoteButton: RemoteButton = .ok
     @State private var shortcutEditingTarget: ShortcutEditingTarget?
     @State private var voiceShortcutEditorPresented = false
+    @State private var customPresetSaved = false
+    @State private var customPresetFeedbackTask: Task<Void, Never>?
     @State private var bluetoothAuthorization = CBManager.authorization
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
@@ -609,8 +611,16 @@ struct SettingsView: View {
                     .frame(width: 92)
                     .help(settings.customVoiceTriggerMode.helpText)
 
-                    Button("保存当前为自定义预设") {
+                    Button {
                         settings.saveCurrentAsCustomPreset()
+                        showCustomPresetSavedFeedback()
+                    } label: {
+                        Label(
+                            customPresetSaved ? "已保存" : "保存当前为自定义预设",
+                            systemImage: customPresetSaved
+                                ? "checkmark.circle.fill"
+                                : "square.and.arrow.down"
+                        )
                     }
                     .adaptiveProminentGlassButtonStyle()
                 } else {
@@ -621,6 +631,20 @@ struct SettingsView: View {
                 }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func showCustomPresetSavedFeedback() {
+        customPresetFeedbackTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.16)) {
+            customPresetSaved = true
+        }
+        customPresetFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.16)) {
+                customPresetSaved = false
+            }
+        }
     }
 
     @ViewBuilder
