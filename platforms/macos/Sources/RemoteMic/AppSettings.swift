@@ -97,6 +97,7 @@ final class AppSettings: ObservableObject {
         static let customPresetShortcuts = "customPresetShortcuts"
         static let customPresetSecondaryBindings = "customPresetSecondaryBindings"
         static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
+        static let computerMicrophonePassthroughEnabled = "computerMicrophonePassthroughEnabled"
     }
 
     private let defaults: UserDefaults
@@ -127,6 +128,15 @@ final class AppSettings: ObservableObject {
 
     @Published var headsetCompatibilityEnabled: Bool {
         didSet { defaults.set(headsetCompatibilityEnabled, forKey: Keys.headsetCompatibilityEnabled) }
+    }
+
+    @Published var computerMicrophonePassthroughEnabled: Bool {
+        didSet {
+            defaults.set(
+                computerMicrophonePassthroughEnabled,
+                forKey: Keys.computerMicrophonePassthroughEnabled
+            )
+        }
     }
 
     @Published var buttonBindings: [RemoteButton: ButtonAction] {
@@ -184,6 +194,9 @@ final class AppSettings: ObservableObject {
         headsetCompatibilityEnabled = defaults.object(forKey: Keys.headsetCompatibilityEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.headsetCompatibilityEnabled)
+        computerMicrophonePassthroughEnabled = defaults.bool(
+            forKey: Keys.computerMicrophonePassthroughEnabled
+        )
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),

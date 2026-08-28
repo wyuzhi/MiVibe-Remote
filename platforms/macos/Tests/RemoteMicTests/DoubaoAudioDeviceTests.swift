@@ -3,6 +3,21 @@ import Testing
 
 @Suite("MiVibe virtual microphone")
 struct DoubaoAudioDeviceTests {
+    @Test func builtInMicrophoneCaptureRequiresExplicitOptInAndAReadyVirtualOutput() {
+        #expect(!BuiltInMicrophonePassthroughPolicy.shouldCapture(
+            enabled: false,
+            hasVirtualOutput: true
+        ))
+        #expect(!BuiltInMicrophonePassthroughPolicy.shouldCapture(
+            enabled: true,
+            hasVirtualOutput: false
+        ))
+        #expect(BuiltInMicrophonePassthroughPolicy.shouldCapture(
+            enabled: true,
+            hasVirtualOutput: true
+        ))
+    }
+
     @Test func appLifetimeInputLeaseRestoresTheUsersPreviousMicrophoneOnExit() {
         let builtIn = AudioDeviceInfo(id: 1, uid: "BuiltIn", name: "MacBook Pro 麦克风")
         let virtual = AudioDeviceInfo(id: 2, uid: "MiRemoteV", name: "MiRemoteV 2ch")

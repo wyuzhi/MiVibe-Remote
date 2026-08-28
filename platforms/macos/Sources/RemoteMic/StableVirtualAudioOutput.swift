@@ -22,6 +22,7 @@ final class StableVirtualAudioOutput {
     private var pendingCompletion: ((Bool) -> Void)?
     private var remoteActive = false
     private var testToneActive = false
+    private var builtInMicrophonePassthroughEnabled = false
     private var rejectedWriteCount = 0
     private var lastRejectedWriteLogDate = Date.distantPast
 
@@ -88,7 +89,7 @@ final class StableVirtualAudioOutput {
         outputIOProcID = ioProcID
         selectedDevice = device
         status = "语音输出：\(device.name)"
-        builtInCapture.start()
+        updateBuiltInMicrophoneCapture()
         AppLogger.shared.write(
             "AUDIO DIRECT_READY target={\(CoreAudioDeviceCatalog.deviceDiagnostic(device))} " +
                 "previous={\(previousState)} state={\(diagnosticState())}"
@@ -109,7 +110,20 @@ final class StableVirtualAudioOutput {
     }
 
     func retryBuiltInMicrophoneCapture() {
+        guard builtInMicrophonePassthroughEnabled else { return }
         builtInCapture.retry()
+    }
+
+    func setBuiltInMicrophonePassthroughEnabled(_ enabled: Bool) {
+        guard builtInMicrophonePassthroughEnabled != enabled else {
+            updateBuiltInMicrophoneCapture()
+            return
+        }
+        builtInMicrophonePassthroughEnabled = enabled
+        updateBuiltInMicrophoneCapture()
+        AppLogger.shared.write(
+            "AUDIO BUILTIN_PASSTHROUGH enabled=\(enabled) output_ready=\(outputIOProcID != nil)"
+        )
     }
 
     @discardableResult
@@ -334,6 +348,18 @@ final class StableVirtualAudioOutput {
         outputIOProcID = nil
         outputDeviceID = nil
         selectedDevice = nil
+        builtInCapture.stop()
+    }
+
+    private func updateBuiltInMicrophoneCapture() {
+        if BuiltInMicrophonePassthroughPolicy.shouldCapture(
+            enabled: builtInMicrophonePassthroughEnabled,
+            hasVirtualOutput: outputIOProcID != nil
+        ) {
+            builtInCapture.start()
+        } else {
+            builtInCapture.stop()
+        }
     }
 
     private func setTestToneActive(_ active: Bool) {
@@ -406,5 +432,11 @@ final class StableVirtualAudioOutput {
             output[index] = input[lower] + (input[upper] - input[lower]) * fraction
         }
         return output
+    }
+}
+
+enum BuiltInMicrophonePassthroughPolicy {
+    static func shouldCapture(enabled: Bool, hasVirtualOutput: Bool) -> Bool {
+        enabled && hasVirtualOutput
     }
 }

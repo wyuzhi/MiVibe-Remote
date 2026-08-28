@@ -368,6 +368,19 @@ struct RemoteButtonsTests {
         #expect(!settings.headsetCompatibilityEnabled)
     }
 
+    @Test func computerMicrophonePassthroughIsPrivacyFirstAndPersistent() throws {
+        let suite = "RemoteButtonsTests.microphonePassthrough-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AppSettings(defaults: defaults)
+        #expect(!settings.computerMicrophonePassthroughEnabled)
+
+        settings.computerMicrophonePassthroughEnabled = true
+        let restored = AppSettings(defaults: defaults)
+        #expect(restored.computerMicrophonePassthroughEnabled)
+    }
+
     @Test func migratesTheOriginalHomeKeyVibePresetToThePowerKey() throws {
         let suiteName = "RemoteMicTests.vibePresetMigration.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

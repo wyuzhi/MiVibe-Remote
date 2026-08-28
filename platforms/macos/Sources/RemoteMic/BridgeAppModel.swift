@@ -131,6 +131,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         started = true
         refreshAudioDevices()
         activatePersistentDefaultInput()
+        applyComputerMicrophonePassthroughSetting()
         if !applyAudioSettings(reason: "startup") {
             scheduleAudioRecovery(
                 reason: "startup_failed",
@@ -535,8 +536,25 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     func requestMicrophonePermission() {
-        audioOutput.retryBuiltInMicrophoneCapture()
+        if !settings.computerMicrophonePassthroughEnabled {
+            settings.computerMicrophonePassthroughEnabled = true
+            applyComputerMicrophonePassthroughSetting()
+        } else {
+            audioOutput.retryBuiltInMicrophoneCapture()
+        }
         openPrivacyPane("Privacy_Microphone")
+    }
+
+    func applyComputerMicrophonePassthroughSetting() {
+        audioOutput.setBuiltInMicrophonePassthroughEnabled(
+            settings.computerMicrophonePassthroughEnabled
+        )
+        if !settings.computerMicrophonePassthroughEnabled {
+            computerMicrophoneStatus = "电脑麦克风透传已关闭；MiVibe 未在采集电脑麦克风"
+        }
+        AppLogger.shared.write(
+            "AUDIO BUILTIN_PASSTHROUGH setting=\(settings.computerMicrophonePassthroughEnabled)"
+        )
     }
 
     func openLogFolder() {

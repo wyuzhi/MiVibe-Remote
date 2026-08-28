@@ -42,11 +42,13 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 private enum PermissionVisualState {
     case granted
     case pending
+    case optional
 
     var title: String {
         switch self {
         case .granted: return "已开启"
         case .pending: return "待授权"
+        case .optional: return "无需授权"
         }
     }
 
@@ -54,6 +56,7 @@ private enum PermissionVisualState {
         switch self {
         case .granted: return .green
         case .pending: return .orange
+        case .optional: return .blue
         }
     }
 }
@@ -371,7 +374,18 @@ struct SettingsView: View {
                                 model.applyHeadsetCompatibilitySetting()
                             }
                         ))
-                        Text("开启后，MiVibe 运行期间固定使用 MiRemoteV 2ch；平时传入 MacBook 麦克风，按住语音键时由遥控器接管。关闭或退出后恢复原麦克风。")
+                        Text("开启后，MiVibe 运行期间固定系统默认输入为 MiRemoteV 2ch；关闭或退出后恢复原麦克风。此设置本身不会采集 MacBook 麦克风。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Toggle("电脑麦克风透传（会显示橙色隐私标记）", isOn: Binding(
+                            get: { settings.computerMicrophonePassthroughEnabled },
+                            set: { enabled in
+                                settings.computerMicrophonePassthroughEnabled = enabled
+                                model.applyComputerMicrophonePassthroughSetting()
+                            }
+                        ))
+                        Text("默认关闭。开启后，未按遥控器语音键时会把 MacBook 麦克风送入 MiRemoteV 2ch，macOS 将持续显示麦克风隐私标记；关闭后 MiVibe 只传输遥控器声音，直接用电脑说话时需在目标软件选择 MacBook 麦克风。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -905,9 +919,13 @@ struct SettingsView: View {
                                 index: 3,
                                 symbol: "mic",
                                 title: "麦克风",
-                                detail: "把 MacBook 内置麦克风转发到常驻的 MiRemoteV 2ch",
+                                detail: settings.computerMicrophonePassthroughEnabled
+                                    ? "可选：把 MacBook 内置麦克风转发到常驻的 MiRemoteV 2ch"
+                                    : "可选功能，默认关闭；仅开启电脑麦克风透传时才需要授权",
                                 state: computerMicrophonePermissionState,
-                                actionTitle: "请求权限"
+                                actionTitle: settings.computerMicrophonePassthroughEnabled
+                                    ? "请求权限"
+                                    : "开启透传"
                             ) {
                                 model.requestMicrophonePermission()
                             }
@@ -1024,7 +1042,10 @@ struct SettingsView: View {
 
     private var virtualMicrophoneDetail: String {
         if isVirtualMicrophoneSelected && model.isAudioReady {
-            return "默认输入保持 MiRemoteV 2ch；电脑麦克风与遥控器在内部无缝切换"
+            if settings.computerMicrophonePassthroughEnabled {
+                return "默认输入保持 MiRemoteV 2ch；电脑麦克风与遥控器在内部无缝切换"
+            }
+            return "默认输入保持 MiRemoteV 2ch；仅按住遥控器语音键时传输声音"
         }
         if isVirtualMicrophoneSelected {
             return model.audioStatus
@@ -1040,7 +1061,10 @@ struct SettingsView: View {
     }
 
     private var computerMicrophonePermissionState: PermissionVisualState {
-        model.computerMicrophoneStatus.contains("→ MiRemoteV 2ch") ? .granted : .pending
+        guard settings.computerMicrophonePassthroughEnabled else { return .optional }
+        return model.computerMicrophoneStatus.contains("→ MiRemoteV 2ch")
+            ? .granted
+            : .pending
     }
 
     private var currentPresetStatus: String {
