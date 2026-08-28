@@ -22,3 +22,13 @@ enum TestToneGate {
         hasSelectedDevice && !isStreaming && !isPlaying
     }
 }
+
+enum VirtualAudioRoutePolicy {
+    static func shouldRun(
+        computerMicrophonePassthroughEnabled: Bool,
+        isStreaming: Bool,
+        isPlayingTestTone: Bool
+    ) -> Bool {
+        computerMicrophonePassthroughEnabled || isStreaming || isPlayingTestTone
+    }
+}

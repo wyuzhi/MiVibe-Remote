@@ -256,6 +256,28 @@ final class StableVirtualAudioOutput {
         stopOutput()
     }
 
+    /// Releases the virtual microphone IOProc when no source is using it.
+    /// Keeping the device selected as the system input does not require the
+    /// MiVibe process to hold an active CoreAudio stream while idle.
+    @discardableResult
+    func suspendWhenIdle() -> Bool {
+        stateLock.lock()
+        let canSuspend = !remoteActive && !testToneActive && pendingCompletion == nil
+        stateLock.unlock()
+        guard canSuspend else {
+            AppLogger.shared.write("AUDIO IDLE_SUSPEND skipped reason=source_active")
+            return false
+        }
+
+        let wasRunning = outputIOProcID != nil
+        stopOutput()
+        status = "虚拟麦克风待命；按住遥控器语音键时启动"
+        if wasRunning {
+            AppLogger.shared.write("AUDIO IDLE_SUSPEND completed")
+        }
+        return true
+    }
+
     func diagnosticState() -> String {
         "\(basicDiagnosticState()) \(CoreAudioDeviceCatalog.routeDiagnostic())"
     }

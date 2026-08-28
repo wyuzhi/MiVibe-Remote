@@ -131,7 +131,6 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         started = true
         refreshAudioDevices()
         activatePersistentDefaultInput()
-        applyComputerMicrophonePassthroughSetting()
         if !applyAudioSettings(reason: "startup") {
             scheduleAudioRecovery(
                 reason: "startup_failed",
@@ -139,6 +138,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 retryAttempt: 1
             )
         }
+        applyComputerMicrophonePassthroughSetting()
         startObservingAudioHardware()
         applyHIDSettings()
         bluetoothBridge.start()
@@ -233,9 +233,28 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
     }
 
     @discardableResult
-    func applyAudioSettings(reason: String = "settings_change") -> Bool {
+    func applyAudioSettings(
+        reason: String = "settings_change",
+        forceRouteActive: Bool = false
+    ) -> Bool {
         AppLogger.shared.write("AUDIO REBIND begin reason=\(reason) state={\(audioOutput.diagnosticState())}")
         cancelTestToneIfNeeded(statusMessage: "设备已更新，测试音已取消", logReason: "device_reconfigure")
+        let selectedDeviceAvailable = hasSelectedAudioDevice
+        if !forceRouteActive && !shouldKeepAudioRouteActive {
+            _ = audioOutput.suspendWhenIdle()
+            isAudioReady = selectedDeviceAvailable
+            audioStatus = selectedDeviceAvailable
+                ? "虚拟麦克风待命；按住遥控器语音键时启动"
+                : "未选择语音输出设备或设备不可用"
+            testToneStatus = selectedDeviceAvailable
+                ? "可按需启动测试音"
+                : "未选择语音输出设备或设备不可用"
+            AppLogger.shared.write(
+                "AUDIO REBIND finished reason=\(reason) success=\(selectedDeviceAvailable) " +
+                    "mode=idle_suspended status=\(audioStatus) state={\(audioOutput.diagnosticState())}"
+            )
+            return selectedDeviceAvailable
+        }
         let configured = audioOutput.configure(deviceUID: settings.selectedAudioDeviceUID)
         isAudioReady = configured
         audioStatus = audioOutput.status
@@ -247,6 +266,32 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             "state={\(audioOutput.diagnosticState())}"
         )
         return configured
+    }
+
+    private var hasSelectedAudioDevice: Bool {
+        !settings.selectedAudioDeviceUID.isEmpty &&
+            audioDevices.contains(where: { $0.uid == settings.selectedAudioDeviceUID })
+    }
+
+    private var shouldKeepAudioRouteActive: Bool {
+        VirtualAudioRoutePolicy.shouldRun(
+            computerMicrophonePassthroughEnabled: settings.computerMicrophonePassthroughEnabled,
+            isStreaming: isStreaming,
+            isPlayingTestTone: isPlayingTestTone
+        )
+    }
+
+    private func suspendAudioRouteIfIdle(reason: String) {
+        guard !shouldKeepAudioRouteActive else { return }
+        guard audioOutput.suspendWhenIdle() else { return }
+        isAudioReady = hasSelectedAudioDevice
+        audioStatus = hasSelectedAudioDevice
+            ? "虚拟麦克风待命；按住遥控器语音键时启动"
+            : "未选择语音输出设备或设备不可用"
+        testToneStatus = hasSelectedAudioDevice
+            ? "可按需启动测试音"
+            : "未选择语音输出设备或设备不可用"
+        AppLogger.shared.write("AUDIO ROUTE idle reason=\(reason)")
     }
 
     private func startObservingAudioHardware() {
@@ -304,8 +349,11 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 configuredDeviceUID: self.settings.selectedAudioDeviceUID,
                 availableDevices: self.audioDevices
             )
-            self.isAudioReady = routeHealthyNow
-            if !routeHealthyNow {
+            let readyNow = self.shouldKeepAudioRouteActive
+                ? routeHealthyNow
+                : self.hasSelectedAudioDevice
+            self.isAudioReady = readyNow
+            if !readyNow {
                 self.audioStatus = "音频设备切换中，正在自动恢复"
                 self.testToneStatus = "音频设备切换中，正在自动恢复"
             }
@@ -325,7 +373,9 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 self.refreshAudioDevices()
                 self.activatePersistentDefaultInput()
                 let configured: Bool
-                if self.audioOutput.isHealthy(
+                if !self.shouldKeepAudioRouteActive {
+                    configured = self.applyAudioSettings(reason: "recovery_\(reason)")
+                } else if self.audioOutput.isHealthy(
                     configuredDeviceUID: self.settings.selectedAudioDeviceUID,
                     availableDevices: self.audioDevices
                 ) {
@@ -414,7 +464,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     var canSendTestTone: Bool {
         TestToneGate.canPlay(
-            hasSelectedDevice: audioOutput.isReadyForTestTone,
+            hasSelectedDevice: hasSelectedAudioDevice,
             isStreaming: isStreaming,
             isPlaying: isPlayingTestTone
         )
@@ -422,7 +472,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
 
     func sendTestTone() {
         guard TestToneGate.canPlay(
-            hasSelectedDevice: audioOutput.isReadyForTestTone,
+            hasSelectedDevice: hasSelectedAudioDevice,
             isStreaming: isStreaming,
             isPlaying: isPlayingTestTone
         ) else {
@@ -434,6 +484,14 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             } else {
                 testToneStatus = "未选择语音输出设备或设备不可用"
             }
+            return
+        }
+
+        if !audioOutput.isHealthy(
+            configuredDeviceUID: settings.selectedAudioDeviceUID,
+            availableDevices: audioDevices
+        ), !applyAudioSettings(reason: "test_tone", forceRouteActive: true) {
+            testToneStatus = "测试音发送失败：设备未就绪"
             return
         }
 
@@ -458,6 +516,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         isPlayingTestTone = false
         testToneStatus = finished ? "测试音已完成" : "测试音已取消"
         AppLogger.shared.write("AUDIO TEST_TONE \(finished ? "finished" : "cut_short")")
+        suspendAudioRouteIfIdle(reason: "test_tone_complete")
     }
 
     private func cancelTestToneIfNeeded(statusMessage: String, logReason: String) {
@@ -549,8 +608,21 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioOutput.setBuiltInMicrophonePassthroughEnabled(
             settings.computerMicrophonePassthroughEnabled
         )
-        if !settings.computerMicrophonePassthroughEnabled {
+        if settings.computerMicrophonePassthroughEnabled {
+            if started,
+               !audioOutput.isHealthy(
+                   configuredDeviceUID: settings.selectedAudioDeviceUID,
+                   availableDevices: audioDevices
+               )
+            {
+                _ = applyAudioSettings(
+                    reason: "computer_microphone_passthrough_enabled",
+                    forceRouteActive: true
+                )
+            }
+        } else {
             computerMicrophoneStatus = "电脑麦克风透传已关闭；MiVibe 未在采集电脑麦克风"
+            suspendAudioRouteIfIdle(reason: "computer_microphone_passthrough_disabled")
         }
         AppLogger.shared.write(
             "AUDIO BUILTIN_PASSTHROUGH setting=\(settings.computerMicrophonePassthroughEnabled)"
@@ -720,6 +792,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
         audioOutput.setRemoteActive(false)
         updateVoiceFunctionKeyState(streaming: false)
         AppLogger.shared.write("VOICE DRAIN completed reason=\(reason)")
+        suspendAudioRouteIfIdle(reason: "voice_drain_complete")
     }
 
     func bluetoothBridge(_ bridge: XiaomiBluetoothBridge, didDecode samples: [Int16]) {
@@ -762,7 +835,7 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
             isAudioReady = true
             return
         }
-        guard !applyAudioSettings(reason: "voice_start") else { return }
+        guard !applyAudioSettings(reason: "voice_start", forceRouteActive: true) else { return }
         scheduleAudioRecovery(
             reason: "voice_start_failed",
             delay: AudioRecoveryPolicy.retryDelays[0],

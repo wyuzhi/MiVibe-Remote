@@ -56,4 +56,27 @@ struct TestToneTests {
         #expect(!model.isPlayingTestTone)
         #expect(model.testToneStatus == "未选择语音输出设备或设备不可用")
     }
+
+    @Test func virtualAudioRouteOnlyRunsWhileARealSourceNeedsIt() {
+        #expect(!VirtualAudioRoutePolicy.shouldRun(
+            computerMicrophonePassthroughEnabled: false,
+            isStreaming: false,
+            isPlayingTestTone: false
+        ))
+        #expect(VirtualAudioRoutePolicy.shouldRun(
+            computerMicrophonePassthroughEnabled: true,
+            isStreaming: false,
+            isPlayingTestTone: false
+        ))
+        #expect(VirtualAudioRoutePolicy.shouldRun(
+            computerMicrophonePassthroughEnabled: false,
+            isStreaming: true,
+            isPlayingTestTone: false
+        ))
+        #expect(VirtualAudioRoutePolicy.shouldRun(
+            computerMicrophonePassthroughEnabled: false,
+            isStreaming: false,
+            isPlayingTestTone: true
+        ))
+    }
 }
