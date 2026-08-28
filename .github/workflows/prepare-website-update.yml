@@ -7,6 +7,10 @@ on:
         description: Published stable release tag, for example v0.1.18
         required: true
         type: string
+      source_ref:
+        description: Optional trusted source ref for regenerating feed metadata
+        required: false
+        type: string
       confirmation:
         description: Type PREPARE_WEBSITE_UPDATE
         required: true
@@ -49,7 +53,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ inputs.source_ref || inputs.release_tag }}
 
       - uses: actions/setup-python@v5
         with:

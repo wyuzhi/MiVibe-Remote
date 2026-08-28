@@ -40,7 +40,7 @@ class GenerateAppcastsTests(unittest.TestCase):
             "mac_build_version": "123",
             "windows_version": None,
             "windows_build_version": None,
-            "mac_minimum_system_version": "26.0",
+            "mac_minimum_system_version": "15.0",
             "windows_minimum_system_version": "10.0.17763",
             "release_notes_file": None,
             "published_at": "2026-08-13T10:00:00Z",
@@ -85,6 +85,13 @@ class GenerateAppcastsTests(unittest.TestCase):
             )
             self.assertEqual(
                 enclosure.attrib[f"{{{SPARKLE_NS}}}version"], build_version
+            )
+            self.assertEqual(
+                feed.findtext(
+                    "./channel/item/sparkle:minimumSystemVersion",
+                    namespaces=namespace,
+                ),
+                "10.0.17763" if platform == "windows" else "15.0",
             )
             if platform == "windows":
                 self.assertEqual(

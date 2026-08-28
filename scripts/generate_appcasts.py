@@ -298,7 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--windows-build-version",
         help="optional WinSparkle build version; defaults to display version",
     )
-    parser.add_argument("--mac-minimum-system-version", default="26.0")
+    parser.add_argument("--mac-minimum-system-version", default="15.0")
     parser.add_argument("--windows-minimum-system-version", default="10.0.17763")
     parser.add_argument("--release-notes-file", type=Path)
     parser.add_argument("--published-at")
