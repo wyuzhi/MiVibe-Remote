@@ -12,7 +12,7 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
         case .codex: return "Codex"
         case .workBuddy: return "WorkBuddy"
         case .weChat: return "微信"
-        case .custom: return "自定义快捷键"
+        case .custom: return "自定义"
         }
     }
 
@@ -42,17 +42,6 @@ enum VoiceShortcutProfile: String, CaseIterable, Codable, Equatable {
     }
 }
 
-struct LocalPreset: Codable, Equatable, Identifiable {
-    let id: UUID
-    var name: String
-    var voiceShortcutProfile: VoiceShortcutProfile
-    var customVoiceShortcut: CustomKeyboardShortcut?
-    var customVoiceTriggerMode: VoiceShortcutTriggerMode
-    var buttonBindings: [String: ButtonAction]
-    var buttonShortcuts: [String: CustomKeyboardShortcut]
-    var secondaryButtonBindings: [String: [String: ConfiguredButtonAction]]
-}
-
 enum VoiceShortcutTriggerMode: String, CaseIterable, Codable, Equatable, Identifiable {
     case hold
     case toggle
@@ -72,6 +61,13 @@ enum VoiceShortcutTriggerMode: String, CaseIterable, Codable, Equatable, Identif
         case .toggle: return "按下和松开遥控器语音键时各点按一次快捷键。"
         }
     }
+}
+
+struct CustomVoiceAction: Codable, Equatable, Identifiable {
+    let id: UUID
+    var name: String
+    var shortcut: CustomKeyboardShortcut
+    var triggerMode: VoiceShortcutTriggerMode
 }
 
 struct VoiceShortcutConfiguration: Equatable {
@@ -104,11 +100,11 @@ final class AppSettings: ObservableObject {
         static let voiceShortcutProfile = "voiceShortcutProfile"
         static let customVoiceShortcut = "customVoiceShortcut"
         static let customVoiceTriggerMode = "customVoiceTriggerMode"
+        static let customVoiceActions = "customVoiceActions"
+        static let activeCustomVoiceActionID = "activeCustomVoiceActionID"
         static let customPresetBindings = "customPresetBindings"
         static let customPresetShortcuts = "customPresetShortcuts"
         static let customPresetSecondaryBindings = "customPresetSecondaryBindings"
-        static let localPresets = "localPresets"
-        static let activeLocalPresetID = "activeLocalPresetID"
         static let headsetCompatibilityEnabled = "headsetCompatibilityEnabled"
         static let computerMicrophonePassthroughEnabled = "computerMicrophonePassthroughEnabled"
     }
@@ -128,23 +124,31 @@ final class AppSettings: ObservableObject {
     }
 
     @Published var voiceShortcutProfile: VoiceShortcutProfile {
-        didSet {
-            defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile)
-            saveActiveLocalPresetIfNeeded()
-        }
+        didSet { defaults.set(voiceShortcutProfile.rawValue, forKey: Keys.voiceShortcutProfile) }
     }
 
     @Published var customVoiceShortcut: CustomKeyboardShortcut? {
-        didSet {
-            saveCustomVoiceShortcut()
-            saveActiveLocalPresetIfNeeded()
-        }
+        didSet { saveCustomVoiceShortcut() }
     }
 
     @Published var customVoiceTriggerMode: VoiceShortcutTriggerMode {
+        didSet { defaults.set(customVoiceTriggerMode.rawValue, forKey: Keys.customVoiceTriggerMode) }
+    }
+
+    @Published private(set) var customVoiceActions: [CustomVoiceAction] {
+        didSet { saveCustomVoiceActions() }
+    }
+
+    @Published private(set) var activeCustomVoiceActionID: UUID? {
         didSet {
-            defaults.set(customVoiceTriggerMode.rawValue, forKey: Keys.customVoiceTriggerMode)
-            saveActiveLocalPresetIfNeeded()
+            if let activeCustomVoiceActionID {
+                defaults.set(
+                    activeCustomVoiceActionID.uuidString,
+                    forKey: Keys.activeCustomVoiceActionID
+                )
+            } else {
+                defaults.removeObject(forKey: Keys.activeCustomVoiceActionID)
+            }
         }
     }
 
@@ -173,24 +177,9 @@ final class AppSettings: ObservableObject {
         didSet { saveSecondaryBindings() }
     }
 
-    @Published private(set) var localPresets: [LocalPreset] {
-        didSet { saveLocalPresets() }
-    }
-
-    @Published private(set) var activeLocalPresetID: UUID? {
-        didSet {
-            if let activeLocalPresetID {
-                defaults.set(activeLocalPresetID.uuidString, forKey: Keys.activeLocalPresetID)
-            } else {
-                defaults.removeObject(forKey: Keys.activeLocalPresetID)
-            }
-        }
-    }
-
     private var customPresetBindings: [RemoteButton: ButtonAction]?
     private var customPresetShortcuts: [RemoteButton: CustomKeyboardShortcut] = [:]
     private var customPresetSecondaryBindings: [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] = [:]
-    private var isApplyingPreset = false
 
     var peripheralIdentifier: UUID? {
         get {
@@ -204,8 +193,10 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        localPresets = Self.decodeLocalPresets(defaults.data(forKey: Keys.localPresets))
-        activeLocalPresetID = defaults.string(forKey: Keys.activeLocalPresetID)
+        customVoiceActions = Self.decodeCustomVoiceActions(
+            defaults.data(forKey: Keys.customVoiceActions)
+        )
+        activeCustomVoiceActionID = defaults.string(forKey: Keys.activeCustomVoiceActionID)
             .flatMap(UUID.init(uuidString:))
         gainDB = defaults.object(forKey: Keys.gainDB) == nil
             ? 10.0
@@ -293,29 +284,14 @@ final class AppSettings: ObservableObject {
             defaults.data(forKey: Keys.customPresetSecondaryBindings)
         )
 
-        if localPresets.isEmpty, let customPresetBindings {
-            let migrated = LocalPreset(
-                id: UUID(),
-                name: "我的预设",
-                voiceShortcutProfile: .custom,
-                customVoiceShortcut: customVoiceShortcut,
-                customVoiceTriggerMode: customVoiceTriggerMode,
-                buttonBindings: Self.encodeBindings(customPresetBindings),
-                buttonShortcuts: Self.encodeShortcuts(customPresetShortcuts),
-                secondaryButtonBindings: Self.encodeSecondaryBindings(
-                    customPresetSecondaryBindings
-                )
-            )
-            localPresets = [migrated]
-            if voiceShortcutProfile == .custom {
-                activeLocalPresetID = migrated.id
-            }
-            saveLocalPresets()
-        }
-
-        if let activeLocalPresetID,
-           !localPresets.contains(where: { $0.id == activeLocalPresetID }) {
-            self.activeLocalPresetID = nil
+        if voiceShortcutProfile == .custom,
+           let activeCustomVoiceActionID,
+           let action = customVoiceActions.first(where: { $0.id == activeCustomVoiceActionID }) {
+            customVoiceShortcut = action.shortcut
+            customVoiceTriggerMode = action.triggerMode
+        } else if voiceShortcutProfile != .custom ||
+                    !customVoiceActions.contains(where: { $0.id == activeCustomVoiceActionID }) {
+            activeCustomVoiceActionID = nil
         }
     }
 
@@ -393,7 +369,7 @@ final class AppSettings: ObservableObject {
     }
 
     func resetBindings() {
-        activeLocalPresetID = nil
+        activeCustomVoiceActionID = nil
         voiceShortcutProfile = .codex
         buttonBindings = Self.defaultBindings
         buttonShortcuts = [:]
@@ -413,69 +389,101 @@ final class AppSettings: ObservableObject {
     }
 
     func selectVoiceShortcutProfile(_ profile: VoiceShortcutProfile) {
+        activeCustomVoiceActionID = nil
         voiceShortcutProfile = profile
     }
 
-    var activeLocalPreset: LocalPreset? {
-        guard let activeLocalPresetID else { return nil }
-        return localPresets.first(where: { $0.id == activeLocalPresetID })
+    var activeCustomVoiceAction: CustomVoiceAction? {
+        guard let activeCustomVoiceActionID else { return nil }
+        return customVoiceActions.first(where: { $0.id == activeCustomVoiceActionID })
     }
 
-    func isLocalPresetNameAvailable(_ rawName: String, excluding id: UUID? = nil) -> Bool {
-        guard let name = Self.normalizedPresetName(rawName) else { return false }
-        return !localPresets.contains { preset in
-            preset.id != id && preset.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+    var activeVoiceActionDisplayName: String {
+        activeCustomVoiceAction?.name ?? voiceShortcutProfile.displayName
+    }
+
+    var activeCustomVoiceActionHasChanges: Bool {
+        guard let action = activeCustomVoiceAction else { return false }
+        return action.shortcut != customVoiceShortcut || action.triggerMode != customVoiceTriggerMode
+    }
+
+    func beginNewCustomVoiceAction() {
+        activeCustomVoiceActionID = nil
+        voiceShortcutProfile = .custom
+    }
+
+    func selectCustomVoiceAction(id: UUID) {
+        guard let action = customVoiceActions.first(where: { $0.id == id }) else { return }
+        customVoiceShortcut = action.shortcut
+        customVoiceTriggerMode = action.triggerMode
+        activeCustomVoiceActionID = action.id
+        voiceShortcutProfile = .custom
+    }
+
+    func isCustomVoiceActionNameAvailable(_ rawName: String, excluding id: UUID? = nil) -> Bool {
+        guard let name = Self.normalizedVoiceActionName(rawName) else { return false }
+        let reservedNames = VoiceShortcutProfile.allCases.map(\.displayName)
+        guard !reservedNames.contains(where: {
+            $0.localizedCaseInsensitiveCompare(name) == .orderedSame
+        }) else { return false }
+        return !customVoiceActions.contains { action in
+            action.id != id && action.name.localizedCaseInsensitiveCompare(name) == .orderedSame
         }
     }
 
     @discardableResult
-    func createLocalPreset(named rawName: String) -> LocalPreset? {
-        guard let name = Self.normalizedPresetName(rawName),
-              isLocalPresetNameAvailable(name)
+    func createCustomVoiceAction(named rawName: String) -> CustomVoiceAction? {
+        guard let name = Self.normalizedVoiceActionName(rawName),
+              isCustomVoiceActionNameAvailable(name),
+              let customVoiceShortcut
         else { return nil }
-        let preset = currentLocalPreset(id: UUID(), name: name)
-        localPresets.append(preset)
-        activeLocalPresetID = preset.id
-        customMappingEnabled = true
-        return preset
+        let action = CustomVoiceAction(
+            id: UUID(),
+            name: name,
+            shortcut: customVoiceShortcut,
+            triggerMode: customVoiceTriggerMode
+        )
+        customVoiceActions.append(action)
+        activeCustomVoiceActionID = action.id
+        voiceShortcutProfile = .custom
+        return action
     }
 
     @discardableResult
-    func renameLocalPreset(id: UUID, to rawName: String) -> Bool {
-        guard let name = Self.normalizedPresetName(rawName),
-              isLocalPresetNameAvailable(name, excluding: id),
-              let index = localPresets.firstIndex(where: { $0.id == id })
+    func updateActiveCustomVoiceAction() -> Bool {
+        guard let activeCustomVoiceActionID,
+              let shortcut = customVoiceShortcut,
+              let index = customVoiceActions.firstIndex(where: { $0.id == activeCustomVoiceActionID })
         else { return false }
-        localPresets[index].name = name
+        customVoiceActions[index].shortcut = shortcut
+        customVoiceActions[index].triggerMode = customVoiceTriggerMode
         return true
     }
 
     @discardableResult
-    func overwriteLocalPresetWithCurrentSettings(id: UUID) -> Bool {
-        guard let index = localPresets.firstIndex(where: { $0.id == id }) else {
-            return false
-        }
-        localPresets[index] = currentLocalPreset(id: id, name: localPresets[index].name)
-        activeLocalPresetID = id
+    func renameCustomVoiceAction(id: UUID, to rawName: String) -> Bool {
+        guard let name = Self.normalizedVoiceActionName(rawName),
+              isCustomVoiceActionNameAvailable(name, excluding: id),
+              let index = customVoiceActions.firstIndex(where: { $0.id == id })
+        else { return false }
+        customVoiceActions[index].name = name
         return true
     }
 
-    func deleteLocalPreset(id: UUID) {
-        localPresets.removeAll(where: { $0.id == id })
-        if activeLocalPresetID == id {
-            activeLocalPresetID = nil
+    func deleteCustomVoiceAction(id: UUID) {
+        customVoiceActions.removeAll(where: { $0.id == id })
+        if activeCustomVoiceActionID == id {
+            activeCustomVoiceActionID = nil
+            voiceShortcutProfile = .custom
         }
     }
 
     func saveCurrentAsCustomPreset() {
+        customPresetBindings = buttonBindings
+        customPresetShortcuts = buttonShortcuts
+        customPresetSecondaryBindings = secondaryButtonBindings
+        saveCustomPreset()
         voiceShortcutProfile = .custom
-        if let activeLocalPresetID {
-            _ = overwriteLocalPresetWithCurrentSettings(id: activeLocalPresetID)
-        } else if let existing = localPresets.first {
-            _ = overwriteLocalPresetWithCurrentSettings(id: existing.id)
-        } else {
-            _ = createLocalPreset(named: "我的预设")
-        }
     }
 
     func applyCodexPreset() {
@@ -491,92 +499,57 @@ final class AppSettings: ObservableObject {
     }
 
     func applyCustomPreset() {
-        if let first = localPresets.first {
-            applyLocalPreset(id: first.id)
-        } else {
-            saveCurrentAsCustomPreset()
-        }
+        applyPreset(.custom)
     }
 
     @discardableResult
     func cyclePreset() -> VoiceShortcutProfile {
-        if let activeLocalPresetID,
-           let index = localPresets.firstIndex(where: { $0.id == activeLocalPresetID }) {
-            let nextIndex = localPresets.index(after: index)
-            if nextIndex < localPresets.endIndex {
-                applyLocalPreset(id: localPresets[nextIndex].id)
-                return .custom
-            }
-            applyCodexPreset()
-            return .codex
-        }
-
-        switch voiceShortcutProfile {
-        case .codex:
-            applyWorkBuddyPreset()
-            return .workBuddy
-        case .workBuddy:
-            applyWeChatPreset()
-            return .weChat
-        case .weChat, .custom:
-            if let first = localPresets.first {
-                applyLocalPreset(id: first.id)
-                return .custom
-            }
-            applyCodexPreset()
-            return .codex
-        }
-    }
-
-    func applyLocalPreset(id: UUID, preservingCycleActions: Bool = true) {
-        guard let preset = localPresets.first(where: { $0.id == id }) else { return }
-        let cycleActions = preservingCycleActions ? configuredCycleActions : []
-        isApplyingPreset = true
-        customMappingEnabled = true
-        activeLocalPresetID = preset.id
-        voiceShortcutProfile = preset.voiceShortcutProfile
-        customVoiceShortcut = preset.customVoiceShortcut
-        customVoiceTriggerMode = preset.customVoiceTriggerMode
-        buttonBindings = Self.defaultBindings.merging(
-            Self.decodeBindings(preset.buttonBindings)
-        ) { _, saved in saved }
-        buttonShortcuts = Self.decodeShortcuts(preset.buttonShortcuts)
-        secondaryButtonBindings = Self.decodeSecondaryBindings(
-            preset.secondaryButtonBindings
-        )
-        for (button, trigger) in cycleActions {
-            setAction(.cyclePreset, for: button, trigger: trigger)
-        }
-        isApplyingPreset = false
-        saveActiveLocalPresetIfNeeded()
+        let nextProfile = voiceShortcutProfile.next
+        applyPreset(nextProfile)
+        return nextProfile
     }
 
     func applyPreset(
         _ profile: VoiceShortcutProfile,
         preservingCycleActions: Bool = true
     ) {
-        if profile == .custom {
-            applyCustomPreset()
-            return
-        }
         let cycleActions = preservingCycleActions ? configuredCycleActions : []
-        isApplyingPreset = true
         customMappingEnabled = true
-        activeLocalPresetID = nil
-        voiceShortcutProfile = profile
-        buttonBindings = Self.bindings(for: profile)
-        buttonShortcuts = [:]
-        secondaryButtonBindings = [:]
+        if profile == .custom {
+            if let customPresetBindings {
+                buttonBindings = customPresetBindings
+                buttonShortcuts = customPresetShortcuts
+                secondaryButtonBindings = customPresetSecondaryBindings
+            } else {
+                customPresetBindings = buttonBindings
+                customPresetShortcuts = buttonShortcuts
+                customPresetSecondaryBindings = secondaryButtonBindings
+                saveCustomPreset()
+            }
+            voiceShortcutProfile = .custom
+        } else {
+            activeCustomVoiceActionID = nil
+            voiceShortcutProfile = profile
+            buttonBindings = Self.bindings(for: profile)
+            buttonShortcuts = [:]
+            secondaryButtonBindings = [:]
+        }
         for (button, trigger) in cycleActions {
             setAction(.cyclePreset, for: button, trigger: trigger)
         }
-        isApplyingPreset = false
+        if profile == .custom {
+            customPresetBindings = buttonBindings
+            customPresetShortcuts = buttonShortcuts
+            customPresetSecondaryBindings = secondaryButtonBindings
+            saveCustomPreset()
+        }
     }
 
     var activePreset: VoiceShortcutProfile? {
         guard customMappingEnabled else { return nil }
-        if activeLocalPresetID != nil { return .custom }
-        if voiceShortcutProfile == .custom { return nil }
+        if voiceShortcutProfile == .custom {
+            return customPresetMatchesCurrentBindings ? .custom : nil
+        }
         guard buttonShortcuts.isEmpty else { return nil }
 
         let expected = Self.bindings(for: voiceShortcutProfile)
@@ -590,6 +563,13 @@ final class AppSettings: ObservableObject {
         return mainBindingsMatch && secondaryBindingsAreOnlyPresetSwitches
             ? voiceShortcutProfile
             : nil
+    }
+
+    private var customPresetMatchesCurrentBindings: Bool {
+        guard let customPresetBindings else { return false }
+        return buttonBindings == customPresetBindings
+            && buttonShortcuts == customPresetShortcuts
+            && secondaryButtonBindings == customPresetSecondaryBindings
     }
 
     private var configuredCycleActions: [(RemoteButton, ButtonTrigger)] {
@@ -627,52 +607,31 @@ final class AppSettings: ObservableObject {
         defaults.set(data, forKey: Keys.customVoiceShortcut)
     }
 
-    private func saveCustomPresetIfActive() {
-        if activeLocalPresetID != nil {
-            saveActiveLocalPresetIfNeeded()
-            return
+    private func saveCustomVoiceActions() {
+        if let data = try? JSONEncoder().encode(customVoiceActions) {
+            defaults.set(data, forKey: Keys.customVoiceActions)
         }
+    }
+
+    private static func decodeCustomVoiceActions(_ data: Data?) -> [CustomVoiceAction] {
+        guard let data,
+              let actions = try? JSONDecoder().decode([CustomVoiceAction].self, from: data)
+        else { return [] }
+        return actions
+    }
+
+    private static func normalizedVoiceActionName(_ rawName: String) -> String? {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(20))
+    }
+
+    private func saveCustomPresetIfActive() {
         guard voiceShortcutProfile == .custom else { return }
         customPresetBindings = buttonBindings
         customPresetShortcuts = buttonShortcuts
         customPresetSecondaryBindings = secondaryButtonBindings
         saveCustomPreset()
-    }
-
-    private func saveActiveLocalPresetIfNeeded() {
-        guard !isApplyingPreset,
-              let activeLocalPresetID,
-              let index = localPresets.firstIndex(where: { $0.id == activeLocalPresetID })
-        else { return }
-        localPresets[index] = currentLocalPreset(
-            id: activeLocalPresetID,
-            name: localPresets[index].name
-        )
-    }
-
-    private func currentLocalPreset(id: UUID, name: String) -> LocalPreset {
-        LocalPreset(
-            id: id,
-            name: name,
-            voiceShortcutProfile: voiceShortcutProfile,
-            customVoiceShortcut: customVoiceShortcut,
-            customVoiceTriggerMode: customVoiceTriggerMode,
-            buttonBindings: Self.encodeBindings(buttonBindings),
-            buttonShortcuts: Self.encodeShortcuts(buttonShortcuts),
-            secondaryButtonBindings: Self.encodeSecondaryBindings(secondaryButtonBindings)
-        )
-    }
-
-    private func saveLocalPresets() {
-        if let data = try? JSONEncoder().encode(localPresets) {
-            defaults.set(data, forKey: Keys.localPresets)
-        }
-    }
-
-    private static func normalizedPresetName(_ rawName: String) -> String? {
-        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return String(trimmed.prefix(20))
     }
 
     private func saveCustomPreset() {
@@ -706,13 +665,7 @@ final class AppSettings: ObservableObject {
         guard let data,
               let decoded = try? JSONDecoder().decode([String: ButtonAction].self, from: data)
         else { return nil }
-        return decodeBindings(decoded)
-    }
-
-    private static func decodeBindings(
-        _ decoded: [String: ButtonAction]
-    ) -> [RemoteButton: ButtonAction] {
-        Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
             RemoteButton(rawValue: key).map { ($0, value) }
         })
     }
@@ -721,13 +674,7 @@ final class AppSettings: ObservableObject {
         guard let data,
               let decoded = try? JSONDecoder().decode([String: CustomKeyboardShortcut].self, from: data)
         else { return [:] }
-        return decodeShortcuts(decoded)
-    }
-
-    private static func decodeShortcuts(
-        _ decoded: [String: CustomKeyboardShortcut]
-    ) -> [RemoteButton: CustomKeyboardShortcut] {
-        Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
             RemoteButton(rawValue: key).map { ($0, value) }
         })
     }
@@ -741,48 +688,12 @@ final class AppSettings: ObservableObject {
                   from: data
               )
         else { return [:] }
-        return decodeSecondaryBindings(decoded)
-    }
-
-    private static func decodeSecondaryBindings(
-        _ decoded: [String: [String: ConfiguredButtonAction]]
-    ) -> [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] {
-        Dictionary(uniqueKeysWithValues: decoded.compactMap { buttonKey, bindings in
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { buttonKey, bindings in
             guard let button = RemoteButton(rawValue: buttonKey) else { return nil }
             let parsed = Dictionary(uniqueKeysWithValues: bindings.compactMap { triggerKey, binding in
                 ButtonTrigger(rawValue: triggerKey).map { ($0, binding) }
             })
             return parsed.isEmpty ? nil : (button, parsed)
-        })
-    }
-
-    private static func decodeLocalPresets(_ data: Data?) -> [LocalPreset] {
-        guard let data,
-              let presets = try? JSONDecoder().decode([LocalPreset].self, from: data)
-        else { return [] }
-        return presets
-    }
-
-    private static func encodeBindings(
-        _ bindings: [RemoteButton: ButtonAction]
-    ) -> [String: ButtonAction] {
-        Dictionary(uniqueKeysWithValues: bindings.map { ($0.key.rawValue, $0.value) })
-    }
-
-    private static func encodeShortcuts(
-        _ shortcuts: [RemoteButton: CustomKeyboardShortcut]
-    ) -> [String: CustomKeyboardShortcut] {
-        Dictionary(uniqueKeysWithValues: shortcuts.map { ($0.key.rawValue, $0.value) })
-    }
-
-    private static func encodeSecondaryBindings(
-        _ bindings: [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]]
-    ) -> [String: [String: ConfiguredButtonAction]] {
-        Dictionary(uniqueKeysWithValues: bindings.map { button, triggers in
-            (
-                button.rawValue,
-                Dictionary(uniqueKeysWithValues: triggers.map { ($0.key.rawValue, $0.value) })
-            )
         })
     }
 
