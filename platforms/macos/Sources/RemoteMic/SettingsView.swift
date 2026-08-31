@@ -86,6 +86,7 @@ struct SettingsView: View {
     @State private var inlinePresetEditorContext: InlineLocalPresetEditorContext?
     @State private var inlinePresetName = ""
     @State private var customVoiceEditing = false
+    @State private var pendingPresetDeletion: LocalPreset?
     @State private var bluetoothAuthorization = CBManager.authorization
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
     @State private var accessibilityGranted = KeyboardInjector.isAccessibilityTrusted
@@ -142,6 +143,19 @@ struct SettingsView: View {
                 settings.customVoiceShortcut = shortcut
                 settings.selectVoiceShortcutProfile(.custom)
             }
+        }
+        .alert(item: $pendingPresetDeletion) { preset in
+            Alert(
+                title: Text("删除“\(preset.name)”？"),
+                message: Text("这个本地预设及其按键映射将被删除，此操作无法撤销。"),
+                primaryButton: .destructive(Text("删除")) {
+                    settings.deleteLocalPreset(id: preset.id)
+                    settings.applyCodexPreset()
+                    customVoiceEditing = false
+                    selectedRemoteButton = .power
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 
@@ -583,10 +597,15 @@ struct SettingsView: View {
                 HStack(alignment: .center, spacing: 14) {
                     voiceShortcutHeading
                     Spacer(minLength: 8)
+                    activeLocalPresetDeleteButton
                     voiceShortcutControls
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    voiceShortcutHeading
+                    HStack(alignment: .center, spacing: 12) {
+                        voiceShortcutHeading
+                        Spacer(minLength: 8)
+                        activeLocalPresetDeleteButton
+                    }
                     voiceShortcutControls
                 }
             }
@@ -606,6 +625,24 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var activeLocalPresetDeleteButton: some View {
+        if let preset = settings.activeLocalPreset {
+            Button {
+                pendingPresetDeletion = preset
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 36, height: 32)
+                    .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+            .help("删除预设“\(preset.name)”")
+            .accessibilityLabel("删除自定义预设 \(preset.name)")
         }
     }
 

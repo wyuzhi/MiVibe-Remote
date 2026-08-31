@@ -47,6 +47,8 @@ struct AppLifecycleTests {
         #expect(settingsSource.contains("TextField(\"输入预设名称\""))
         #expect(settingsSource.contains("help(\"新增自定义预设\")"))
         #expect(settingsSource.contains("再次点击可重命名"))
+        #expect(settingsSource.contains("pendingPresetDeletion = preset"))
+        #expect(settingsSource.contains("删除自定义预设"))
         #expect(!settingsSource.contains("Label(\"保存为新预设\""))
         #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
         #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))
