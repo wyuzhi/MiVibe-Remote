@@ -86,6 +86,8 @@ struct SettingsView: View {
     @State private var inlinePresetEditorContext: InlineLocalPresetEditorContext?
     @State private var inlinePresetName = ""
     @State private var customVoiceEditing = false
+    @State private var customVoiceDraftShortcut: CustomKeyboardShortcut?
+    @State private var customVoiceDraftTriggerMode: VoiceShortcutTriggerMode = .hold
     @State private var pendingPresetDeletion: LocalPreset?
     @State private var bluetoothAuthorization = CBManager.authorization
     @State private var inputMonitoringGranted = HIDRemoteMonitor.isInputMonitoringGranted
@@ -138,10 +140,16 @@ struct SettingsView: View {
         .sheet(isPresented: $voiceShortcutEditorPresented) {
             ShortcutEditorSheet(
                 title: "录入语音键快捷键",
-                currentShortcut: settings.customVoiceShortcut
+                currentShortcut: settings.activeLocalPreset != nil && customVoiceEditing
+                    ? customVoiceDraftShortcut
+                    : settings.customVoiceShortcut
             ) { shortcut in
-                settings.customVoiceShortcut = shortcut
-                settings.selectVoiceShortcutProfile(.custom)
+                if settings.activeLocalPreset != nil && customVoiceEditing {
+                    customVoiceDraftShortcut = shortcut
+                } else {
+                    settings.customVoiceShortcut = shortcut
+                    settings.selectVoiceShortcutProfile(.custom)
+                }
             }
         }
         .alert(item: $pendingPresetDeletion) { preset in
@@ -648,6 +656,51 @@ struct SettingsView: View {
 
     private var voiceShortcutControls: some View {
         HStack(spacing: 10) {
+            if settings.activeLocalPreset != nil {
+                if customVoiceEditing {
+                    Button {
+                        voiceShortcutEditorPresented = true
+                    } label: {
+                        Label(
+                            customVoiceDraftShortcut?.displayName ?? "录入快捷键",
+                            systemImage: "keyboard"
+                        )
+                    }
+                    .adaptiveGlassButtonStyle()
+
+                    Picker("触发方式", selection: $customVoiceDraftTriggerMode) {
+                        ForEach(VoiceShortcutTriggerMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 92)
+                    .help(customVoiceDraftTriggerMode.helpText)
+
+                    Button("取消") {
+                        customVoiceEditing = false
+                    }
+                    .adaptiveGlassButtonStyle()
+
+                    Button("确定") {
+                        confirmCustomVoiceEditing()
+                    }
+                    .adaptiveProminentGlassButtonStyle()
+                    .disabled(customVoiceDraftShortcut == nil)
+                } else {
+                    Text(
+                        "\(settings.voiceShortcutDisplayName)（\(settings.customVoiceTriggerMode.displayName)）"
+                    )
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 104)
+
+                    Button("编辑", systemImage: "pencil") {
+                        beginCustomVoiceEditing()
+                    }
+                    .adaptiveGlassButtonStyle()
+                }
+            } else {
                 Picker("语音快捷键", selection: Binding(
                     get: { settings.voiceShortcutProfile },
                     set: { profile in
@@ -662,21 +715,7 @@ struct SettingsView: View {
                 .labelsHidden()
                 .frame(width: 112)
 
-                if settings.voiceShortcutProfile == .custom,
-                   settings.activeLocalPreset != nil,
-                   !customVoiceEditing {
-                    Text(
-                        "\(settings.voiceShortcutDisplayName)（\(settings.customVoiceTriggerMode.displayName)）"
-                    )
-                    .font(.system(.body, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 104)
-
-                    Button("编辑", systemImage: "pencil") {
-                        customVoiceEditing = true
-                    }
-                    .adaptiveGlassButtonStyle()
-                } else if settings.voiceShortcutProfile == .custom {
+                if settings.voiceShortcutProfile == .custom {
                     Button {
                         voiceShortcutEditorPresented = true
                     } label: {
@@ -698,9 +737,27 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 74)
                 }
+            }
 
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func beginCustomVoiceEditing() {
+        customVoiceDraftShortcut = settings.customVoiceShortcut
+        customVoiceDraftTriggerMode = settings.customVoiceTriggerMode
+        customVoiceEditing = true
+    }
+
+    private func confirmCustomVoiceEditing() {
+        guard let preset = settings.activeLocalPreset,
+              let shortcut = customVoiceDraftShortcut
+        else { return }
+        settings.selectVoiceShortcutProfile(.custom)
+        settings.customVoiceShortcut = shortcut
+        settings.customVoiceTriggerMode = customVoiceDraftTriggerMode
+        _ = settings.overwriteLocalPresetWithCurrentSettings(id: preset.id)
+        customVoiceEditing = false
     }
 
     @ViewBuilder
