@@ -10,6 +10,8 @@ enum KeyboardInjector {
         @escaping (Error?) -> Void
     ) -> Void
     typealias KeyPoster = (CGKeyCode, CGEventFlags) -> Void
+    typealias KeyStatePoster = (CGKeyCode, CGEventFlags, Bool) -> Bool
+    typealias KeyTapPoster = (CGKeyCode, CGEventFlags) -> Bool
 
     static let syntheticEventMarker: Int64 = 0x5849_414F
     static let contextualMenuKeyCode: CGKeyCode = 110
@@ -61,6 +63,12 @@ enum KeyboardInjector {
         },
         keyTapPoster: (CGKeyCode, CGEventFlags) -> Bool = {
             postKeyPress(code: $0, flags: $1)
+        },
+        modifierKeyStatePoster: KeyStatePoster = {
+            postModifierKeyState(code: $0, flags: $1, isDown: $2)
+        },
+        modifierKeyTapPoster: KeyTapPoster = {
+            postModifierKeyPress(code: $0, flags: $1)
         }
     ) -> Bool {
         guard accessibilityTrusted() else { return false }
@@ -77,6 +85,21 @@ enum KeyboardInjector {
             return functionKeyStatePoster(transition == .press)
         case .custom:
             guard let customShortcut else { return false }
+            if customShortcut.isStandaloneModifier {
+                switch customTriggerMode {
+                case .hold:
+                    return modifierKeyStatePoster(
+                        CGKeyCode(customShortcut.keyCode),
+                        customShortcut.cgEventFlags,
+                        transition == .press
+                    )
+                case .toggle:
+                    return modifierKeyTapPoster(
+                        CGKeyCode(customShortcut.keyCode),
+                        customShortcut.cgEventFlags
+                    )
+                }
+            }
             switch customTriggerMode {
             case .hold:
                 return keyStatePoster(
@@ -121,6 +144,9 @@ enum KeyboardInjector {
         keyPoster: KeyPoster = { postKey(code: $0, flags: $1) },
         frontmostKeyPoster: KeyPoster = {
             postKeyToFrontmostApplication(code: $0, flags: $1)
+        },
+        modifierKeyTapPoster: KeyPoster = {
+            _ = postModifierKeyPress(code: $0, flags: $1)
         }
     ) -> Bool {
         guard action != .disabled else { return true }
@@ -174,7 +200,11 @@ enum KeyboardInjector {
             postSystemKey(type: 16)
         case .customShortcut:
             if let shortcut {
-                keyPoster(CGKeyCode(shortcut.keyCode), shortcut.cgEventFlags)
+                if shortcut.isStandaloneModifier {
+                    modifierKeyTapPoster(CGKeyCode(shortcut.keyCode), shortcut.cgEventFlags)
+                } else {
+                    keyPoster(CGKeyCode(shortcut.keyCode), shortcut.cgEventFlags)
+                }
             }
         case .cyclePreset, .openRemoteMic, .openCodex, .openWorkBuddy, .openClaude, .openCmux, .openWeChat, .openCursor, .openXcode,
              .openSlack, .openWeCom, .openNeteaseMusic, .openChrome, .openSafari, .openZed:
@@ -289,6 +319,35 @@ enum KeyboardInjector {
         event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
         event.post(tap: .cghidEventTap)
         return true
+    }
+
+    private static func postModifierKeyState(
+        code: CGKeyCode,
+        flags: CGEventFlags,
+        isDown: Bool
+    ) -> Bool {
+        guard let source = eventSource,
+              let event = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: code,
+                  keyDown: isDown
+              )
+        else { return false }
+        event.type = .flagsChanged
+        event.flags = isDown ? flags : []
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        event.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private static func postModifierKeyPress(
+        code: CGKeyCode,
+        flags: CGEventFlags
+    ) -> Bool {
+        guard postModifierKeyState(code: code, flags: flags, isDown: true) else {
+            return false
+        }
+        return postModifierKeyState(code: code, flags: flags, isDown: false)
     }
 
     private static func postKeyPress(

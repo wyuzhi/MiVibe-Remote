@@ -99,6 +99,38 @@ struct RemoteButtonsTests {
         ) == shortcut)
     }
 
+    @Test func standaloneModifierShortcutsDisplayAndPostAsModifierTaps() {
+        let cases: [(UInt16, NSEvent.ModifierFlags, String, CGEventFlags)] = [
+            (55, .command, "⌘", .maskCommand),
+            (58, .option, "⌥", .maskAlternate),
+            (59, .control, "⌃", .maskControl),
+            (56, .shift, "⇧", .maskShift),
+            (63, .function, "fn", .maskSecondaryFn),
+        ]
+
+        for (keyCode, modifier, displayName, cgFlags) in cases {
+            let shortcut = CustomKeyboardShortcut(
+                keyCode: keyCode,
+                modifierFlags: modifier,
+                keyLabel: ""
+            )
+            var posted: (CGKeyCode, CGEventFlags)?
+            #expect(shortcut.isStandaloneModifier)
+            #expect(shortcut.displayName == displayName)
+            #expect(KeyboardInjector.send(
+                .customShortcut,
+                shortcut: shortcut,
+                accessibilityTrusted: { true },
+                keyPoster: { _, _ in
+                    Issue.record("Standalone modifiers must not use normal key events")
+                },
+                modifierKeyTapPoster: { posted = ($0, $1) }
+            ))
+            #expect(posted?.0 == CGKeyCode(keyCode))
+            #expect(posted?.1 == cgFlags)
+        }
+    }
+
     @Test func customShortcutPostsRecordedKeyAndRequiresAccessibility() {
         let shortcut = CustomKeyboardShortcut(
             keyCode: 40,

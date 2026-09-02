@@ -94,11 +94,20 @@ struct CustomKeyboardShortcut: Codable, Equatable {
     }
 
     init(event: NSEvent) {
-        self.init(
-            keyCode: event.keyCode,
-            modifierFlags: event.modifierFlags,
-            keyLabel: Self.keyLabel(for: event)
-        )
+        if event.type == .flagsChanged,
+           let modifier = Self.standaloneModifier(for: event.keyCode) {
+            self.init(
+                keyCode: event.keyCode,
+                modifierFlags: modifier,
+                keyLabel: ""
+            )
+        } else {
+            self.init(
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags,
+                keyLabel: Self.keyLabel(for: event)
+            )
+        }
     }
 
     var modifierFlags: NSEvent.ModifierFlags {
@@ -116,14 +125,29 @@ struct CustomKeyboardShortcut: Codable, Equatable {
         return flags
     }
 
+    var isStandaloneModifier: Bool {
+        keyLabel.isEmpty && Self.standaloneModifier(for: keyCode) != nil
+    }
+
     var displayName: String {
         var result = ""
         if modifierFlags.contains(.control) { result += "⌃" }
         if modifierFlags.contains(.option) { result += "⌥" }
         if modifierFlags.contains(.shift) { result += "⇧" }
         if modifierFlags.contains(.command) { result += "⌘" }
-        if modifierFlags.contains(.function) { result += "fn " }
+        if modifierFlags.contains(.function) { result += keyLabel.isEmpty ? "fn" : "fn " }
         return result + keyLabel
+    }
+
+    static func standaloneModifier(for keyCode: UInt16) -> NSEvent.ModifierFlags? {
+        switch keyCode {
+        case 54, 55: return .command
+        case 56, 60: return .shift
+        case 58, 61: return .option
+        case 59, 62: return .control
+        case 63: return .function
+        default: return nil
+        }
     }
 
     private static func keyLabel(for event: NSEvent) -> String {

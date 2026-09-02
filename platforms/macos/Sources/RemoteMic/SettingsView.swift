@@ -1497,7 +1497,7 @@ private struct ShortcutEditorSheet: View {
             VStack(spacing: 5) {
                 Text(title)
                     .font(.title3.weight(.semibold))
-                Text("直接按下想要的按键组合，支持 Command、Option、Control、Shift 和 Fn。")
+                Text("直接按下想要的按键；Command、Option、Control、Shift 和 Fn 也可以单独录入。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1561,6 +1561,7 @@ private struct ShortcutCaptureView: NSViewRepresentable {
         var onCapture: (CustomKeyboardShortcut) -> Void
         weak var view: NSView?
         private var monitor: Any?
+        private var pendingStandaloneModifier: CustomKeyboardShortcut?
 
         init(onCapture: @escaping (CustomKeyboardShortcut) -> Void) {
             self.onCapture = onCapture
@@ -1568,10 +1569,27 @@ private struct ShortcutCaptureView: NSViewRepresentable {
 
         func startMonitoring() {
             guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .flagsChanged]
+            ) { [weak self] event in
                 guard let self, event.window === self.view?.window else { return event }
-                self.onCapture(CustomKeyboardShortcut(event: event))
-                return nil
+                if event.type == .keyDown {
+                    self.pendingStandaloneModifier = nil
+                    self.onCapture(CustomKeyboardShortcut(event: event))
+                    return nil
+                }
+
+                guard let modifier = CustomKeyboardShortcut.standaloneModifier(
+                    for: event.keyCode
+                ) else { return event }
+                if !event.modifierFlags.intersection(modifier).isEmpty {
+                    self.pendingStandaloneModifier = CustomKeyboardShortcut(event: event)
+                } else if self.pendingStandaloneModifier?.keyCode == event.keyCode,
+                          let shortcut = self.pendingStandaloneModifier {
+                    self.pendingStandaloneModifier = nil
+                    self.onCapture(shortcut)
+                }
+                return event
             }
         }
 
@@ -1579,6 +1597,7 @@ private struct ShortcutCaptureView: NSViewRepresentable {
             guard let monitor else { return }
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
+            pendingStandaloneModifier = nil
         }
 
         deinit {

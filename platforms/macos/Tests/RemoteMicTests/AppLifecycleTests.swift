@@ -52,6 +52,8 @@ struct AppLifecycleTests {
         #expect(settingsSource.contains("Button(\"确定\")"))
         #expect(settingsSource.contains("confirmCustomVoiceEditing()"))
         #expect(settingsSource.contains("overwriteLocalPresetWithCurrentSettings"))
+        #expect(settingsSource.contains("matching: [.keyDown, .flagsChanged]"))
+        #expect(settingsSource.contains("也可以单独录入"))
         #expect(!settingsSource.contains("Label(\"保存为新预设\""))
         #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
         #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))

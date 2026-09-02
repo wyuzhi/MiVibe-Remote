@@ -191,6 +191,63 @@ struct VoiceFunctionKeyLatchTests {
         #expect(posted.allSatisfy { $0.0 == 2 && $0.1 == [.maskCommand] })
     }
 
+    @Test func customStandaloneModifierUsesFlagsChangedAcrossBothEdges() {
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 58,
+            modifierFlags: [.option],
+            keyLabel: ""
+        )
+        var posted: [(CGKeyCode, CGEventFlags, Bool)] = []
+
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .custom,
+                transition: transition,
+                customShortcut: shortcut,
+                customTriggerMode: .hold,
+                accessibilityTrusted: { true },
+                keyStatePoster: { _, _, _ in
+                    Issue.record("Standalone modifiers must not use normal key events")
+                    return false
+                },
+                modifierKeyStatePoster: {
+                    posted.append(($0, $1, $2))
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted.allSatisfy { $0.0 == 58 && $0.1 == [.maskAlternate] })
+        #expect(posted.map(\.2) == [true, false])
+    }
+
+    @Test func customStandaloneModifierToggleTapsOnBothRemoteEdges() {
+        let shortcut = CustomKeyboardShortcut(
+            keyCode: 63,
+            modifierFlags: [.function],
+            keyLabel: ""
+        )
+        var posted: [(CGKeyCode, CGEventFlags)] = []
+
+        for transition in [VoiceFunctionKeyTransition.press, .release] {
+            #expect(KeyboardInjector.sendVoiceShortcut(
+                profile: .custom,
+                transition: transition,
+                customShortcut: shortcut,
+                customTriggerMode: .toggle,
+                accessibilityTrusted: { true },
+                modifierKeyTapPoster: {
+                    posted.append(($0, $1))
+                    return true
+                }
+            ))
+        }
+
+        #expect(posted.count == 2)
+        #expect(posted.allSatisfy { $0.0 == 63 && $0.1 == [.maskSecondaryFn] })
+    }
+
     @Test func voiceProfilesFailClosedWithoutAccessibility() {
         for profile in VoiceShortcutProfile.allCases {
             #expect(!KeyboardInjector.sendVoiceShortcut(
