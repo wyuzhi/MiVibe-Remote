@@ -35,7 +35,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
 
-- macOS：`MiVibe-Remote-0.1.13.dmg`
+- macOS：`MiVibe-Remote-0.1.14.dmg`
 - Windows：`MiVibeRemoteSetup-0.1.19.exe`
 - 每个安装包旁边都有对应的 `.sha256` 校验文件
 
@@ -54,7 +54,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 15 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.13.dmg`。
+1. 下载并打开 `MiVibe-Remote-0.1.14.dmg`。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
 4. 首次启动后，在“权限”页面依次允许蓝牙、麦克风、输入监控和辅助功能。
