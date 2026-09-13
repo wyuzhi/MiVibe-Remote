@@ -12,7 +12,7 @@ import os
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 import uuid
 
 from .xiaomi_config import (
@@ -23,15 +23,19 @@ from .xiaomi_config import (
     DEFAULT_VOICE_HOTKEY,
     KEYS_CONFIG_PATH,
     MAPPING_SCHEMA_VERSION,
+    PRESET_ORDER,
+    QIANWEN_VOICE_TRIGGER_MODE,
     WORKBUDDY_VOICE_TRIGGER_MODE,
     WECHAT_VOICE_TRIGGER_MODE,
     apply_remote_identity,
     codex_button_bindings,
+    custom_preset_definitions,
     hotkey_injection_method,
     hotkey_tokens,
     load_config,
     load_keys_config,
     resolve_hotkey_virtual_keys,
+    qianwen_button_bindings,
     save_config,
     save_keys_config,
     save_preset_button_bindings,
@@ -644,8 +648,13 @@ class XiaomiSettingsWindow:
         self.instance_stop = threading.Event()
         self.config = load_config()
         self.keys_config = load_keys_config()
+        self.working_custom_presets = copy.deepcopy(
+            custom_preset_definitions(self.keys_config)
+        )
         self.working_preset = str(self.config.get("active_preset", "codex"))
-        if self.working_preset not in {"codex", "workbuddy", "wechat"}:
+        if self.working_preset not in set(PRESET_ORDER) | set(
+            self.working_custom_presets
+        ):
             self.working_preset = "codex"
         self.working_profiles = copy.deepcopy(
             self.keys_config.get("preset_bindings", {})
@@ -709,6 +718,8 @@ class XiaomiSettingsWindow:
             self.root, self._capture_complete, self._capture_failed
         )
         self.preset_buttons: dict[str, ttk.Button] = {}
+        self.preset_area: tk.Frame | None = None
+        self.add_preset_button: ttk.Button | None = None
         self._build()
         self.select_button(self.selected_id)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -1192,6 +1203,7 @@ class XiaomiSettingsWindow:
         footer.pack(fill="x", pady=(12, 0))
         preset_area = tk.Frame(footer, bg=CARD)
         preset_area.pack(side="left")
+        self.preset_area = preset_area
         tk.Label(
             preset_area,
             text="快捷预设",
@@ -1203,6 +1215,7 @@ class XiaomiSettingsWindow:
             ("codex", "Codex", self.apply_codex_preset),
             ("workbuddy", "WorkBuddy", self.apply_workbuddy_preset),
             ("wechat", "微信输入", self.apply_wechat_preset),
+            ("qianwen", "千问办公", self.apply_qianwen_preset),
         ):
             button = ttk.Button(
                 preset_area,
@@ -1212,6 +1225,17 @@ class XiaomiSettingsWindow:
             )
             button.pack(side="left", padx=(0, 7))
             self.preset_buttons[preset_id] = button
+        for preset_id, details in self.working_custom_presets.items():
+            self._add_custom_preset_button(
+                preset_id, str(details.get("name", "自定义"))
+            )
+        self.add_preset_button = ttk.Button(
+            preset_area,
+            text="＋ 新增自定义",
+            command=self.add_custom_preset,
+            style="Preset.TButton",
+        )
+        self.add_preset_button.pack(side="left", padx=(0, 7))
         action_area = tk.Frame(footer, bg=CARD)
         action_area.pack(side="right")
         ttk.Button(
@@ -1258,8 +1282,15 @@ class XiaomiSettingsWindow:
             "codex": "Codex 模式",
             "workbuddy": "WorkBuddy 模式",
             "wechat": "微信输入模式",
+            "qianwen": "千问办公模式",
         }
-        self.preset_name_var.set(labels.get(self.working_preset, "自定义模式"))
+        custom = self.working_custom_presets.get(self.working_preset, {})
+        self.preset_name_var.set(
+            labels.get(
+                self.working_preset,
+                f"{custom.get('name', '自定义')} 模式",
+            )
+        )
         for preset_id, button in self.preset_buttons.items():
             button.configure(
                 style=(
@@ -1816,9 +1847,16 @@ class XiaomiSettingsWindow:
             "codex": codex_button_bindings,
             "workbuddy": workbuddy_button_bindings,
             "wechat": wechat_button_bindings,
-        }.get(self.working_preset, codex_button_bindings)()
+            "qianwen": qianwen_button_bindings,
+        }
+        if self.working_preset in defaults:
+            default_bindings = defaults[self.working_preset]()
+        else:
+            default_bindings = saved_preset_button_bindings(
+                self.keys_config, self.working_preset
+            )
         self.working_bindings[self.selected_id] = copy.deepcopy(
-            defaults[self.selected_id]
+            default_bindings[self.selected_id]
         )
         if self.selected_id == "mic":
             self.voice_enabled.set(True)
@@ -1834,6 +1872,12 @@ class XiaomiSettingsWindow:
             "codex": codex_button_bindings(),
             "workbuddy": workbuddy_button_bindings(),
             "wechat": wechat_button_bindings(),
+            "qianwen": qianwen_button_bindings(),
+            **{
+                preset: copy.deepcopy(bindings)
+                for preset, bindings in self.working_profiles.items()
+                if preset in self.working_custom_presets
+            },
         }
         self.voice_enabled.set(True)
         self.voice_trigger_mode.set(
@@ -1876,19 +1920,125 @@ class XiaomiSettingsWindow:
         self.selected_id = "power"
         self.select_button(self.selected_id)
 
-    def _switch_preset(self, preset: str) -> None:
-        cycle_bindings = self._cycle_bindings()
+    def apply_qianwen_preset(self) -> None:
+        self._switch_preset("qianwen")
+        self.voice_enabled.set(True)
+        self.voice_trigger_mode.set(
+            "按住型" if QIANWEN_VOICE_TRIGGER_MODE == "hold" else "开关型"
+        )
+        self.save_status_var.set("已载入千问办公预设，点击“保存并应用”后生效")
+        self._refresh_preset_styles()
+        self.selected_id = "power"
+        self.select_button(self.selected_id)
+
+    def _add_custom_preset_button(self, preset_id: str, name: str) -> None:
+        if self.preset_area is None or preset_id in self.preset_buttons:
+            return
+        button = ttk.Button(
+            self.preset_area,
+            text=name,
+            command=lambda value=preset_id: self.apply_custom_preset(value),
+            style="Preset.TButton",
+        )
+        pack_options = {"side": "left", "padx": (0, 7)}
+        if self.add_preset_button is not None:
+            pack_options["before"] = self.add_preset_button
+        button.pack(**pack_options)
+        self.preset_buttons[preset_id] = button
+
+    def add_custom_preset(self) -> None:
+        name = simpledialog.askstring(
+            APP_NAME,
+            "给新的自定义预设起个名字（最多 20 个字符）：",
+            parent=self.root,
+        )
+        if name is None:
+            return
+        name = name.strip()
+        if not name:
+            messagebox.showerror(APP_NAME, "预设名称不能为空。")
+            return
+        if len(name) > 20:
+            messagebox.showerror(APP_NAME, "预设名称不能超过 20 个字符。")
+            return
+        existing_names = {
+            str(details.get("name", "")).casefold()
+            for details in self.working_custom_presets.values()
+        }
+        if name.casefold() in existing_names:
+            messagebox.showerror(APP_NAME, "已经有同名的自定义预设。")
+            return
+
+        self._remember_working_preset()
+        preset_id = f"custom_{uuid.uuid4().hex[:12]}"
+        self.working_custom_presets[preset_id] = {
+            "name": name,
+            "voice_hotkey": self._current_voice_hotkey(),
+            "voice_trigger_mode": self._current_voice_trigger_mode(),
+            "voice_shortcut_enabled": bool(self.voice_enabled.get()),
+        }
+        self.working_profiles[preset_id] = copy.deepcopy(self.working_bindings)
+        self.working_preset = preset_id
+        self._add_custom_preset_button(preset_id, name)
+        self._refresh_preset_styles()
+        self.save_status_var.set(
+            f"已新增自定义预设“{name}”，点击“保存并应用”后保存到本机"
+        )
+
+    def apply_custom_preset(self, preset_id: str) -> None:
+        details = self.working_custom_presets.get(preset_id)
+        if not isinstance(details, dict):
+            return
+        self._switch_preset(preset_id)
+        self.voice_enabled.set(bool(details.get("voice_shortcut_enabled", True)))
+        self.voice_trigger_mode.set(
+            "开关型"
+            if str(details.get("voice_trigger_mode", "hold")) == "toggle"
+            else "按住型"
+        )
+        self.save_status_var.set(
+            f"已载入自定义预设“{details.get('name', '自定义')}”，点击“保存并应用”后生效"
+        )
+        self._refresh_preset_styles()
+        self.selected_id = "power"
+        self.select_button(self.selected_id)
+
+    def _current_voice_hotkey(self) -> str:
+        action = first_action(self.working_bindings.get("mic"))
+        if action and action.get("type") == "hotkey":
+            return "+".join(hotkey_tokens(action.get("keys", [])))
+        return ""
+
+    def _current_voice_trigger_mode(self) -> str:
+        return "toggle" if self.voice_trigger_mode.get() == "开关型" else "hold"
+
+    def _remember_working_preset(self) -> None:
         self.working_profiles[self.working_preset] = copy.deepcopy(
             self.working_bindings
         )
+        details = self.working_custom_presets.get(self.working_preset)
+        if isinstance(details, dict):
+            details["voice_hotkey"] = self._current_voice_hotkey()
+            details["voice_trigger_mode"] = self._current_voice_trigger_mode()
+            details["voice_shortcut_enabled"] = bool(self.voice_enabled.get())
+
+    def _switch_preset(self, preset: str) -> None:
+        cycle_bindings = self._cycle_bindings()
+        self._remember_working_preset()
         self.working_preset = preset
         defaults = {
             "codex": codex_button_bindings,
             "workbuddy": workbuddy_button_bindings,
             "wechat": wechat_button_bindings,
+            "qianwen": qianwen_button_bindings,
         }
         self.working_bindings = copy.deepcopy(
-            self.working_profiles.get(preset) or defaults[preset]()
+            self.working_profiles.get(preset)
+            or (
+                defaults[preset]()
+                if preset in defaults
+                else codex_button_bindings()
+            )
         )
         self.working_bindings.update(cycle_bindings)
 
@@ -1936,16 +2086,18 @@ class XiaomiSettingsWindow:
             self.config["raw_mapping_enabled"] = True
 
             self.keys_config["mapping_schema_version"] = MAPPING_SCHEMA_VERSION
-            self.working_profiles[self.working_preset] = copy.deepcopy(
-                self.working_bindings
-            )
+            self._remember_working_preset()
             for preset, bindings in self.working_profiles.items():
-                if preset in {"codex", "workbuddy", "wechat"} and isinstance(
-                    bindings, dict
+                if (
+                    preset in set(PRESET_ORDER) | set(self.working_custom_presets)
+                    and isinstance(bindings, dict)
                 ):
                     save_preset_button_bindings(
                         self.keys_config, preset, bindings
                     )
+            self.keys_config["custom_presets"] = copy.deepcopy(
+                self.working_custom_presets
+            )
             self.keys_config["button_bindings"] = copy.deepcopy(
                 self.working_bindings
             )

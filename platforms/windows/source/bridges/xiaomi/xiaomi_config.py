@@ -19,7 +19,7 @@ KEYS_CONFIG_PATH = APPDATA / "xiaomi_keys.json"
 
 APP_VERSION = "0.1.19"
 APP_VERSION = os.environ.get("REMOTE_BRIDGE_XIAOMI_VERSION", APP_VERSION)
-MAPPING_SCHEMA_VERSION = 2
+MAPPING_SCHEMA_VERSION = 3
 
 CODEX_VOICE_HOTKEY = ("rightalt",)
 CODEX_VOICE_TRIGGER_MODE = "hold"
@@ -27,8 +27,10 @@ WORKBUDDY_VOICE_HOTKEY = ("ctrl", "d")
 WORKBUDDY_VOICE_TRIGGER_MODE = "toggle"
 WECHAT_VOICE_HOTKEY = ("ctrl", "win")
 WECHAT_VOICE_TRIGGER_MODE = "hold"
+QIANWEN_VOICE_HOTKEY = ("rightctrl",)
+QIANWEN_VOICE_TRIGGER_MODE = "toggle"
 DEFAULT_VOICE_HOTKEY = CODEX_VOICE_HOTKEY
-PRESET_ORDER = ("codex", "workbuddy", "wechat")
+PRESET_ORDER = ("codex", "workbuddy", "wechat", "qianwen")
 SIDED_MODIFIER_KEYS = frozenset(
     {
         "leftctrl",
@@ -226,6 +228,14 @@ WECHAT_START_COMMAND = (
     "if ($exe) { Start-Process $exe } else { Start-Process 'WeChat.exe' } }"
 )
 
+QIANWEN_START_COMMAND = (
+    "$app = Get-StartApps | Where-Object { $_.Name -in @('千问办公', 'QwenWork') } "
+    "| Select-Object -First 1; "
+    "if ($app) { Start-Process ('shell:AppsFolder\\' + $app.AppID) } "
+    "else { try { Start-Process 'qwenwork:' -ErrorAction Stop } "
+    "catch { Start-Process 'QwenWork.exe' } }"
+)
+
 
 def codex_button_bindings() -> dict:
     bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
@@ -299,12 +309,47 @@ def wechat_button_bindings() -> dict:
     return bindings
 
 
+def qianwen_button_bindings() -> dict:
+    bindings = copy.deepcopy(DEFAULT_BUTTON_BINDINGS)
+    bindings["mic"] = [
+        {"type": "hotkey", "keys": list(QIANWEN_VOICE_HOTKEY)}
+    ]
+    bindings["power"] = [
+        {
+            "type": "command",
+            "args": [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                QIANWEN_START_COMMAND,
+            ],
+            "label": "打开千问办公",
+        }
+    ]
+    bindings["menu"] = [{"type": "hotkey", "keys": ["esc"]}]
+    return bindings
+
+
 def preset_button_bindings(preset: str) -> dict:
     if preset == "workbuddy":
         return workbuddy_button_bindings()
     if preset == "wechat":
         return wechat_button_bindings()
+    if preset == "qianwen":
+        return qianwen_button_bindings()
     return codex_button_bindings()
+
+
+def custom_preset_definitions(keys_config: dict) -> dict:
+    definitions = keys_config.get("custom_presets", {})
+    return definitions if isinstance(definitions, dict) else {}
+
+
+def available_preset_order(keys_config: dict) -> tuple[str, ...]:
+    return PRESET_ORDER + tuple(custom_preset_definitions(keys_config))
 
 
 def saved_preset_button_bindings(keys_config: dict, preset: str) -> dict:
@@ -330,12 +375,16 @@ def save_preset_button_bindings(
     profiles[preset] = copy.deepcopy(bindings)
 
 
-def next_preset(preset: str) -> str:
-    try:
-        index = PRESET_ORDER.index(preset)
-    except ValueError:
+def next_preset(
+    preset: str, order: tuple[str, ...] = PRESET_ORDER
+) -> str:
+    if not order:
         return PRESET_ORDER[0]
-    return PRESET_ORDER[(index + 1) % len(PRESET_ORDER)]
+    try:
+        index = order.index(preset)
+    except ValueError:
+        return order[0]
+    return order[(index + 1) % len(order)]
 
 
 def apply_preset_configuration(
@@ -344,14 +393,24 @@ def apply_preset_configuration(
     preset: str,
     preserve_cycle_actions: bool = True,
 ) -> str:
-    if preset not in PRESET_ORDER:
+    preset_order = available_preset_order(keys_config)
+    if preset not in preset_order:
         preset = PRESET_ORDER[0]
     current_preset = str(config.get("active_preset", PRESET_ORDER[0]))
     current_bindings = keys_config.get("button_bindings", {})
-    if current_preset in PRESET_ORDER and isinstance(current_bindings, dict):
+    if current_preset in preset_order and isinstance(current_bindings, dict):
         save_preset_button_bindings(
             keys_config, current_preset, current_bindings
         )
+        current_custom = custom_preset_definitions(keys_config).get(current_preset)
+        if isinstance(current_custom, dict):
+            current_custom["voice_hotkey"] = str(config.get("voice_hotkey", ""))
+            current_custom["voice_trigger_mode"] = str(
+                config.get("voice_trigger_mode", "hold")
+            )
+            current_custom["voice_shortcut_enabled"] = bool(
+                config.get("voice_shortcut_enabled", True)
+            )
     cycle_bindings = {}
     if preserve_cycle_actions and isinstance(current_bindings, dict):
         for button, actions in current_bindings.items():
@@ -368,10 +427,24 @@ def apply_preset_configuration(
         "codex": (CODEX_VOICE_HOTKEY, CODEX_VOICE_TRIGGER_MODE),
         "workbuddy": (WORKBUDDY_VOICE_HOTKEY, WORKBUDDY_VOICE_TRIGGER_MODE),
         "wechat": (WECHAT_VOICE_HOTKEY, WECHAT_VOICE_TRIGGER_MODE),
+        "qianwen": (QIANWEN_VOICE_HOTKEY, QIANWEN_VOICE_TRIGGER_MODE),
     }
-    voice_hotkey, voice_trigger_mode = voice_profiles[preset]
+    custom_preset = custom_preset_definitions(keys_config).get(preset)
+    if isinstance(custom_preset, dict):
+        voice_hotkey = tuple(
+            hotkey_tokens(custom_preset.get("voice_hotkey", ""))
+        ) or DEFAULT_VOICE_HOTKEY
+        voice_trigger_mode = str(
+            custom_preset.get("voice_trigger_mode", "hold")
+        )
+        voice_shortcut_enabled = bool(
+            custom_preset.get("voice_shortcut_enabled", True)
+        )
+    else:
+        voice_hotkey, voice_trigger_mode = voice_profiles[preset]
+        voice_shortcut_enabled = True
     config["active_preset"] = preset
-    config["voice_shortcut_enabled"] = True
+    config["voice_shortcut_enabled"] = voice_shortcut_enabled
     config["voice_hotkey"] = "+".join(voice_hotkey)
     config["voice_trigger_mode"] = voice_trigger_mode
     keys_config["button_bindings"] = copy.deepcopy(bindings)
@@ -380,10 +453,13 @@ def apply_preset_configuration(
 
 
 def cycle_preset_configuration(config: dict, keys_config: dict) -> str:
+    order = available_preset_order(keys_config)
     return apply_preset_configuration(
         config,
         keys_config,
-        next_preset(str(config.get("active_preset", PRESET_ORDER[0]))),
+        next_preset(
+            str(config.get("active_preset", PRESET_ORDER[0])), order
+        ),
     )
 
 
@@ -428,6 +504,7 @@ def default_keys_config() -> dict:
         "preset_bindings": {
             preset: preset_button_bindings(preset) for preset in PRESET_ORDER
         },
+        "custom_presets": {},
         "bindings": {},
     }
 
@@ -625,6 +702,40 @@ def load_keys_config(path: Path = KEYS_CONFIG_PATH) -> dict:
         for preset in PRESET_ORDER:
             if not isinstance(profiles.get(preset), dict):
                 profiles[preset] = preset_button_bindings(preset)
+    custom_presets = config.get("custom_presets", {})
+    if not isinstance(custom_presets, dict):
+        custom_presets = {}
+    sanitized_custom_presets = {}
+    for preset, details in custom_presets.items():
+        if not isinstance(details, dict):
+            continue
+        preset_id = str(preset).strip()
+        name = str(details.get("name", "")).strip()
+        if (
+            not preset_id
+            or not name
+            or not isinstance(profiles.get(preset_id), dict)
+        ):
+            continue
+        try:
+            voice_hotkey = "+".join(
+                hotkey_tokens(details.get("voice_hotkey", ""))
+            )
+            resolve_hotkey_virtual_keys(voice_hotkey)
+        except ValueError:
+            voice_hotkey = "+".join(DEFAULT_VOICE_HOTKEY)
+        trigger_mode = str(details.get("voice_trigger_mode", "hold"))
+        sanitized_custom_presets[preset_id] = {
+            "name": name[:20],
+            "voice_hotkey": voice_hotkey,
+            "voice_trigger_mode": (
+                trigger_mode if trigger_mode in {"toggle", "hold"} else "hold"
+            ),
+            "voice_shortcut_enabled": bool(
+                details.get("voice_shortcut_enabled", True)
+            ),
+        }
+    config["custom_presets"] = sanitized_custom_presets
     config["preset_bindings"] = profiles
     back_actions = bindings.get("back", [])
     if isinstance(back_actions, dict):

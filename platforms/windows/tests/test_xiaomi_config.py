@@ -87,6 +87,29 @@ class XiaomiConfigTests(unittest.TestCase):
             [0x11, 0x5B],
         )
 
+    def test_qianwen_preset_opens_qwenwork_and_toggles_right_ctrl(self) -> None:
+        bindings = xiaomi_config.qianwen_button_bindings()
+
+        self.assertEqual(bindings["power"][0]["type"], "command")
+        self.assertEqual(bindings["power"][0]["label"], "打开千问办公")
+        command = bindings["power"][0]["args"][-1]
+        self.assertIn("'千问办公', 'QwenWork'", command)
+        self.assertIn("QwenWork.exe", command)
+        self.assertEqual(bindings["mic"][0]["keys"], ["rightctrl"])
+        self.assertEqual(xiaomi_config.QIANWEN_VOICE_TRIGGER_MODE, "toggle")
+        self.assertEqual(
+            xiaomi_config.resolve_hotkey_virtual_keys(
+                xiaomi_config.QIANWEN_VOICE_HOTKEY
+            ),
+            [0xA3],
+        )
+        self.assertEqual(
+            xiaomi_config.hotkey_injection_method(
+                xiaomi_config.QIANWEN_VOICE_HOTKEY
+            ),
+            "scan_code",
+        )
+
     def test_cycle_preset_wraps_and_preserves_the_configured_switch_button(self) -> None:
         config = default_config()
         keys = default_keys_config()
@@ -122,10 +145,42 @@ class XiaomiConfigTests(unittest.TestCase):
 
         active = xiaomi_config.cycle_preset_configuration(config, keys)
 
+        self.assertEqual(active, "qianwen")
+        self.assertEqual(config["voice_trigger_mode"], "toggle")
+        self.assertEqual(config["voice_hotkey"], "rightctrl")
+        self.assertEqual(
+            keys["button_bindings"]["power"][0]["label"],
+            "打开千问办公",
+        )
+        self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
+
+        active = xiaomi_config.cycle_preset_configuration(config, keys)
+
         self.assertEqual(active, "codex")
         self.assertEqual(config["voice_trigger_mode"], "hold")
         self.assertEqual(config["voice_hotkey"], "rightalt")
         self.assertEqual(keys["button_bindings"]["tv"][0]["type"], "preset_cycle")
+
+    def test_custom_preset_is_available_and_cycles_with_its_voice_settings(self) -> None:
+        config = default_config()
+        keys = default_keys_config()
+        custom_id = "custom_customer"
+        keys["custom_presets"][custom_id] = {
+            "name": "我的办公",
+            "voice_hotkey": "rightctrl",
+            "voice_trigger_mode": "toggle",
+            "voice_shortcut_enabled": True,
+        }
+        keys["preset_bindings"][custom_id] = xiaomi_config.qianwen_button_bindings()
+        config["active_preset"] = "qianwen"
+        keys["button_bindings"] = xiaomi_config.qianwen_button_bindings()
+
+        active = xiaomi_config.cycle_preset_configuration(config, keys)
+
+        self.assertEqual(active, custom_id)
+        self.assertEqual(config["voice_hotkey"], "rightctrl")
+        self.assertEqual(config["voice_trigger_mode"], "toggle")
+        self.assertIn(custom_id, xiaomi_config.available_preset_order(keys))
 
     def test_each_preset_keeps_its_saved_custom_mapping(self) -> None:
         config = default_config()
@@ -181,6 +236,58 @@ class XiaomiConfigTests(unittest.TestCase):
                     "keys"
                 ],
                 ["f8"],
+            )
+
+    def test_schema_two_upgrade_adds_qianwen_without_changing_saved_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            keys_path = Path(temp_dir) / "xiaomi_keys.json"
+            legacy = default_keys_config()
+            legacy["mapping_schema_version"] = 2
+            legacy["preset_bindings"].pop("qianwen")
+            legacy["preset_bindings"]["wechat"]["menu"] = [
+                {"type": "hotkey", "keys": ["f8"]}
+            ]
+            keys_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+            migrated = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertEqual(
+                migrated["preset_bindings"]["wechat"]["menu"][0]["keys"],
+                ["f8"],
+            )
+            self.assertEqual(
+                migrated["preset_bindings"]["qianwen"]["mic"][0]["keys"],
+                ["rightctrl"],
+            )
+
+    def test_custom_preset_survives_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            keys_path = Path(temp_dir) / "xiaomi_keys.json"
+            keys = default_keys_config()
+            custom_id = "custom_local"
+            keys["custom_presets"][custom_id] = {
+                "name": "我的千问",
+                "voice_hotkey": "rightctrl",
+                "voice_trigger_mode": "toggle",
+                "voice_shortcut_enabled": True,
+            }
+            keys["preset_bindings"][custom_id] = (
+                xiaomi_config.qianwen_button_bindings()
+            )
+            xiaomi_config.save_keys_config(keys, keys_path)
+
+            loaded = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertEqual(
+                loaded["custom_presets"][custom_id]["name"], "我的千问"
+            )
+            self.assertEqual(
+                loaded["custom_presets"][custom_id]["voice_hotkey"],
+                "rightctrl",
+            )
+            self.assertEqual(
+                loaded["preset_bindings"][custom_id]["mic"][0]["keys"],
+                ["rightctrl"],
             )
 
     def test_schema_one_mapping_migrates_into_active_preset(self) -> None:
