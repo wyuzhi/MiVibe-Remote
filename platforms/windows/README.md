@@ -39,11 +39,11 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m unittest discover -s tests -v
 $env:MIVIBE_APPCAST_URL = "https://updates.example.com/windows-appcast.xml"
 $env:MIVIBE_UPDATE_ED25519_PUBLIC_KEY = "<base64-encoded-32-byte-public-key>"
-.\delivery\build-standalone-packages.ps1 -Version 0.1.19 -Product xiaomi -AllowUnsignedCandidate
+.\delivery\build-standalone-packages.ps1 -Version 0.1.20 -Product xiaomi -AllowUnsignedCandidate
 ```
 
 默认只构建 MiVibe Remote；生成的可执行文件和安装器分别为
-`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.19.exe`。`-Product` 参数仍可显式选择
+`MiVibeRemote.exe` 与 `MiVibeRemoteSetup-0.1.20.exe`。`-Product` 参数仍可显式选择
 保留的其他上游独立产品，但它们不属于 MiVibe Remote 交付物。
 构建同时生成对应的 `.exe.sha256` 校验文件。
 
