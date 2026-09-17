@@ -78,6 +78,9 @@ RI_MOUSE_WHEEL = 0x0400
 RI_MOUSE_HWHEEL = 0x0800
 
 INPUT_KEYBOARD = 1
+INPUT_MOUSE = 0
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120
 KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
@@ -523,6 +526,21 @@ def send_vk(vk: int, key_up: bool = False) -> None:
     sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
     if sent != 1:
         raise OSError(last_error_message("SendInput failed"))
+
+
+def send_mouse_wheel(delta: int) -> None:
+    """Send one native vertical mouse-wheel event through SendInput."""
+    amount = int(delta)
+    if amount == 0:
+        return
+    mouse_data = amount & 0xFFFFFFFF
+    inp = INPUT(
+        INPUT_MOUSE,
+        INPUT_UNION(mi=MOUSEINPUT(0, 0, mouse_data, MOUSEEVENTF_WHEEL, 0, 0)),
+    )
+    sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+    if sent != 1:
+        raise OSError(last_error_message("SendInput mouse wheel failed"))
 
 
 def send_hotkey(keys: list[str], hold_ms: int = 70) -> None:
@@ -1267,6 +1285,8 @@ class T1Bridge:
 
         if kind == "hotkey":
             send_hotkey(action.get("keys", []), int(action.get("hold_ms", 70)))
+        elif kind == "mouse_wheel":
+            send_mouse_wheel(int(action.get("delta", 0)))
         elif kind == "hotkey_down":
             state_id = str(action.get("state_id") or json.dumps(action.get("keys", [])))
             audio_source = str(action.get("audio_source") or "").strip()

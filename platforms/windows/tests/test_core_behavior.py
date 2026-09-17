@@ -182,6 +182,42 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         keyboard.send_hotkey.assert_not_called()
         self.assertIn("injection=scan_code", output.call_args_list[-1].args[0])
 
+    def test_mouse_wheel_mapping_uses_native_mouse_input(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
+            xiaomi_core.XiaomiSpecialKeyHook
+        )
+        hook.button_bindings = {
+            "up": [{"type": "mouse_wheel", "delta": 120}]
+        }
+        hook.key_send_lock = threading.Lock()
+        core = mock.Mock()
+        hook._load_bridge_core = mock.Mock(return_value=core)
+
+        with mock.patch("builtins.print"):
+            handled = hook._perform_button_action("up")
+
+        self.assertTrue(handled)
+        core.send_mouse_wheel.assert_called_once_with(120)
+        core.send_hotkey.assert_not_called()
+
+    def test_raw_mapping_dispatches_native_mouse_wheel(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bridge = t1_core.T1Bridge.__new__(t1_core.T1Bridge)
+            bridge.action_handlers = {}
+            bridge.current_mode = "default"
+            bridge.last_action_at = {}
+            bridge.action_log = Path(temp_dir) / "actions.jsonl"
+            bridge.verbose = False
+            bridge.dry_run = False
+
+            with mock.patch.object(t1_core, "send_mouse_wheel") as send_wheel:
+                bridge.run_action(
+                    {"event_id": "kbd:VK_26:SC_048:E0:down"},
+                    {"type": "mouse_wheel", "delta": 120},
+                )
+
+        send_wheel.assert_called_once_with(120)
+
     def test_injector_declares_64_bit_windows_handle_signatures(self) -> None:
         source = Path(hid_tap_injector.__file__).read_text(encoding="utf-8")
         self.assertIn("kernel32.GetCurrentProcess.restype = wintypes.HANDLE", source)

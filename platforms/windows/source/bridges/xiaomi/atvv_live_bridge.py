@@ -372,6 +372,7 @@ class XiaomiSpecialKeyHook:
         self.key_send_lock = threading.Lock()
         self.back_repeat_generation = 0
         self.volume_repeat_generation = 0
+        self.mapping_repeat_generation = 0
         self.stop_event = threading.Event()
         self.direct_signal_lock = threading.Lock()
         self.direct_signal_times: dict[str, float] = {}
@@ -494,6 +495,10 @@ class XiaomiSpecialKeyHook:
                         core.send_hotkey(log_keys)
                     elif action_type == "text":
                         core.send_text(str(action.get("text", "")))
+                    elif action_type == "mouse_wheel":
+                        delta = int(action.get("delta", 0))
+                        core.send_mouse_wheel(delta)
+                        log_keys = [f"wheel:{delta}"]
                     else:
                         print(
                             f"XIAOMI MAPPING unsupported_action={action_type} key={name}",
@@ -599,6 +604,52 @@ class XiaomiSpecialKeyHook:
             daemon=True,
         ).start()
 
+    def _is_mouse_wheel_action(self, name: str) -> bool:
+        actions = getattr(self, "button_bindings", {}).get(name, [])
+        if isinstance(actions, dict):
+            actions = [actions]
+        return any(
+            isinstance(action, dict) and action.get("type") == "mouse_wheel"
+            for action in actions
+        )
+
+    def _cancel_mapping_repeat(self) -> None:
+        with self.direct_state_lock:
+            self.mapping_repeat_generation += 1
+
+    def _start_mapping_repeat(self, usage: int, name: str) -> None:
+        with self.direct_state_lock:
+            self.mapping_repeat_generation += 1
+            generation = self.mapping_repeat_generation
+
+        def worker() -> None:
+            if self.stop_event.wait(0.35):
+                return
+            repeated = 0
+            while not self.stop_event.is_set():
+                with self.direct_state_lock:
+                    active = (
+                        generation == self.mapping_repeat_generation
+                        and usage in self.direct_active_usages
+                    )
+                if not active or not self.action_gate.is_ready():
+                    break
+                self._perform_button_action(name)
+                repeated += 1
+                if self.stop_event.wait(0.10):
+                    break
+            if repeated:
+                print(
+                    f"XIAOMI HID DIRECT {name}_mapping_repeat stopped repeats={repeated}",
+                    flush=True,
+                )
+
+        threading.Thread(
+            target=worker,
+            name=f"xiaomi-{name}-mapping-repeat",
+            daemon=True,
+        ).start()
+
     def _direct_name(self, usage: int) -> str | None:
         # RC003 report ID 1 is an array of three 16-bit Keyboard-page usages.
         # 0xF1 is the Linux/Android KEY_BACK extension that Windows kbdhid drops.
@@ -696,6 +747,8 @@ class XiaomiSpecialKeyHook:
                     self._start_back_repeat()
                 elif triggered and usage in (0x80, 0x81):
                     self._start_volume_repeat(usage, name)
+                elif triggered and self._is_mouse_wheel_action(name):
+                    self._start_mapping_repeat(usage, name)
                 print(
                     f"XIAOMI HID DIRECT key={name} usage=0x{usage:04X} "
                     f"mapped={str(triggered).lower()}",
@@ -715,6 +768,8 @@ class XiaomiSpecialKeyHook:
                     self._cancel_back_repeat()
                 elif usage in (0x80, 0x81):
                     self._cancel_volume_repeat()
+                elif self._is_mouse_wheel_action(name):
+                    self._cancel_mapping_repeat()
                 print(
                     f"XIAOMI HID DIRECT key={name} usage=0x{usage:04X} released",
                     flush=True,
@@ -725,6 +780,7 @@ class XiaomiSpecialKeyHook:
             self.direct_active_usages.clear()
             self.back_repeat_generation += 1
             self.volume_repeat_generation += 1
+            self.mapping_repeat_generation += 1
         self.voice_f5_down_suppressed = False
         with self.direct_signal_lock:
             self.direct_signal_times.pop("mic", None)

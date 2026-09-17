@@ -233,6 +233,8 @@ def format_action(actions) -> str:
         return str(action.get("label") or "启动程序")
     if action_type == "preset_cycle":
         return "循环切换预设"
+    if action_type == "mouse_wheel":
+        return "鼠标滚轮上" if int(action.get("delta", 0)) > 0 else "鼠标滚轮下"
     return action_type
 
 
@@ -1104,6 +1106,28 @@ class XiaomiSettingsWindow:
             font=("Microsoft YaHei UI", 8),
         ).pack(anchor="w", pady=(4, 0))
 
+        mouse_row = tk.Frame(right_card, bg=CARD)
+        mouse_row.pack(fill="x", pady=(12, 0))
+        tk.Label(
+            mouse_row,
+            text="鼠标滚轮",
+            bg=CARD,
+            fg=MUTED,
+            font=("Microsoft YaHei UI", 9),
+        ).pack(side="left")
+        ttk.Button(
+            mouse_row,
+            text="滚轮向上",
+            command=lambda: self.set_selected_to_mouse_wheel(120),
+            style="Quiet.TButton",
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            mouse_row,
+            text="滚轮向下",
+            command=lambda: self.set_selected_to_mouse_wheel(-120),
+            style="Quiet.TButton",
+        ).pack(side="left", padx=(8, 0))
+
         key_buttons = tk.Frame(right_card, bg=CARD)
         key_buttons.pack(fill="x", pady=(13, 0))
         ttk.Button(
@@ -1709,7 +1733,11 @@ class XiaomiSettingsWindow:
         self.selected_label_var.set(label)
         self.current_mapping_var.set(mapping)
         self.result_mapping_var.set(mapping)
-        self.encoding_var.set(capture_encoding(action.get("capture") if action else None))
+        self.encoding_var.set(
+            "Windows 原生鼠标滚轮事件"
+            if action and action.get("type") == "mouse_wheel"
+            else capture_encoding(action.get("capture") if action else None)
+        )
         self.manual_var.set(
             "+".join(action.get("keys", []))
             if action and action.get("type") == "hotkey"
@@ -1839,6 +1867,22 @@ class XiaomiSettingsWindow:
             self.voice_enabled.set(False)
         self.save_status_var.set(
             f"{BUTTON_LABELS[self.selected_id]} 已设为循环切换预设，保存后生效"
+        )
+        self.select_button(self.selected_id)
+
+    def set_selected_to_mouse_wheel(self, delta: int) -> None:
+        self.working_bindings[self.selected_id] = [
+            {
+                "type": "mouse_wheel",
+                "delta": 120 if delta > 0 else -120,
+                "label": "鼠标滚轮上" if delta > 0 else "鼠标滚轮下",
+            }
+        ]
+        if self.selected_id == "mic":
+            self.voice_enabled.set(False)
+        self.save_status_var.set(
+            f"{BUTTON_LABELS[self.selected_id]} 已设为"
+            f"{'鼠标滚轮上' if delta > 0 else '鼠标滚轮下'}，保存后生效"
         )
         self.select_button(self.selected_id)
 

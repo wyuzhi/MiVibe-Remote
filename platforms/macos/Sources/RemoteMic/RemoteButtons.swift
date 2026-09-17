@@ -293,6 +293,8 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
     case arrowDown
     case arrowLeft
     case arrowRight
+    case scrollUp
+    case scrollDown
     case deleteBackward
     case showDesktop
     case contextMenu
@@ -329,6 +331,8 @@ enum ButtonAction: String, CaseIterable, Codable, Identifiable {
         case .arrowDown: return "方向下"
         case .arrowLeft: return "方向左"
         case .arrowRight: return "方向右"
+        case .scrollUp: return "鼠标滚轮上"
+        case .scrollDown: return "鼠标滚轮下"
         case .deleteBackward: return "Delete（退格）"
         case .showDesktop: return "显示桌面"
         case .contextMenu: return "上下文菜单"

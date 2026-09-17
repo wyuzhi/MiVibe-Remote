@@ -290,6 +290,29 @@ class XiaomiConfigTests(unittest.TestCase):
                 ["rightctrl"],
             )
 
+    def test_mouse_wheel_mapping_survives_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            keys_path = Path(temp_dir) / "xiaomi_keys.json"
+            keys = default_keys_config()
+            keys["button_bindings"]["up"] = [
+                {"type": "mouse_wheel", "delta": 120, "label": "鼠标滚轮上"}
+            ]
+            xiaomi_config.save_preset_button_bindings(
+                keys, "codex", keys["button_bindings"]
+            )
+            xiaomi_config.save_keys_config(keys, keys_path)
+
+            loaded = xiaomi_config.load_keys_config(keys_path)
+
+            self.assertEqual(
+                loaded["button_bindings"]["up"][0],
+                {"type": "mouse_wheel", "delta": 120, "label": "鼠标滚轮上"},
+            )
+            self.assertEqual(
+                loaded["preset_bindings"]["codex"]["up"][0]["delta"],
+                120,
+            )
+
     def test_schema_one_mapping_migrates_into_active_preset(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

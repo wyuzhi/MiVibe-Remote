@@ -85,7 +85,7 @@ class StandalonePackageTests(unittest.TestCase):
         text = (ROOT / "delivery" / "build-standalone-packages.ps1").read_text(
             encoding="utf-8-sig"
         )
-        self.assertIn('[string] $Version = "0.1.20"', text)
+        self.assertIn('[string] $Version = "0.1.21"', text)
         self.assertIn('[string[]] $Product = @("xiaomi")', text)
         self.assertIn('Folder = "MiVibeRemote"', text)
         self.assertIn('Exe = "MiVibeRemote.exe"', text)
@@ -124,6 +124,20 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertIn("KEYEVENTF_SCANCODE = 0x0008", text)
         self.assertIn("def send_scan_code_hotkey", text)
         self.assertIn("KEYBDINPUT(0, scan, flags, 0, 0)", text)
+
+    def test_xiaomi_settings_offer_native_mouse_wheel_actions(self) -> None:
+        settings = (
+            SOURCE / "bridges" / "xiaomi" / "xiaomi_settings.py"
+        ).read_text(encoding="utf-8")
+        bridge = (SOURCE / "bridges" / "raw_input_bridge.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('text="滚轮向上"', settings)
+        self.assertIn('text="滚轮向下"', settings)
+        self.assertIn("def set_selected_to_mouse_wheel", settings)
+        self.assertIn("MOUSEEVENTF_WHEEL = 0x0800", bridge)
+        self.assertIn("def send_mouse_wheel", bridge)
 
     def test_xiaomi_voice_shortcut_uses_checked_scan_code_sender(self) -> None:
         text = (

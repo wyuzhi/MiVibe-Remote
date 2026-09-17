@@ -12,6 +12,7 @@ enum KeyboardInjector {
     typealias KeyPoster = (CGKeyCode, CGEventFlags) -> Void
     typealias KeyStatePoster = (CGKeyCode, CGEventFlags, Bool) -> Bool
     typealias KeyTapPoster = (CGKeyCode, CGEventFlags) -> Bool
+    typealias ScrollPoster = (Int32) -> Void
 
     static let syntheticEventMarker: Int64 = 0x5849_414F
     static let contextualMenuKeyCode: CGKeyCode = 110
@@ -19,6 +20,7 @@ enum KeyboardInjector {
     static let codexDictationFlags: CGEventFlags = [.maskControl, .maskShift]
     static let workBuddyVoiceKeyCode: CGKeyCode = 2
     static let workBuddyVoiceFlags: CGEventFlags = [.maskCommand]
+    static let scrollWheelStep: Int32 = 3
     /// WeChat 4.x exposes “语音输入文字（按住 Fn）”. Fn is a modifier and must
     /// be posted as flags-changed state, not as a normal microphone-key tap.
     static let weChatFunctionKeyCode: CGKeyCode = 63
@@ -147,6 +149,9 @@ enum KeyboardInjector {
         },
         modifierKeyTapPoster: KeyPoster = {
             _ = postModifierKeyPress(code: $0, flags: $1)
+        },
+        scrollPoster: ScrollPoster = {
+            postScrollWheel(delta: $0)
         }
     ) -> Bool {
         guard action != .disabled else { return true }
@@ -179,6 +184,10 @@ enum KeyboardInjector {
             keyPoster(123, [])
         case .arrowRight:
             keyPoster(124, [])
+        case .scrollUp:
+            scrollPoster(scrollWheelStep)
+        case .scrollDown:
+            scrollPoster(-scrollWheelStep)
         case .deleteBackward:
             // Back arrives through MiVibe rather than the native keyboard
             // stack. Posting directly to the foreground process avoids the
@@ -258,6 +267,19 @@ enum KeyboardInjector {
         up.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+    }
+
+    private static func postScrollWheel(delta: Int32) {
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: eventSource,
+            units: .line,
+            wheelCount: 1,
+            wheel1: delta,
+            wheel2: 0,
+            wheel3: 0
+        ) else { return }
+        event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
+        event.post(tap: .cghidEventTap)
     }
 
     private static func postKeyToFrontmostApplication(

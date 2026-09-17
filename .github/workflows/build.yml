@@ -165,7 +165,7 @@ jobs:
         shell: pwsh
         run: >
           .\delivery\build-standalone-packages.ps1
-          -Version 0.1.20
+          -Version 0.1.21
           -Product xiaomi
           -AllowUnsignedCandidate
       - name: Upload Windows candidate

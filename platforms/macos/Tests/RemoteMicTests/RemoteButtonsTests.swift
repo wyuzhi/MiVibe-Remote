@@ -61,6 +61,27 @@ struct RemoteButtonsTests {
         #expect(applicationActions.count == PresetApplication.allCases.count)
         #expect(applicationActions.allSatisfy { !$0.allowsRepeat })
         #expect(!ButtonAction.cyclePreset.allowsRepeat)
+        #expect(ButtonAction.scrollUp.allowsRepeat)
+        #expect(ButtonAction.scrollDown.allowsRepeat)
+    }
+
+    @Test func scrollActionsPostNativeWheelDeltas() {
+        var deltas: [Int32] = []
+
+        #expect(KeyboardInjector.send(
+            .scrollUp,
+            accessibilityTrusted: { true },
+            scrollPoster: { deltas.append($0) }
+        ))
+        #expect(KeyboardInjector.send(
+            .scrollDown,
+            accessibilityTrusted: { true },
+            scrollPoster: { deltas.append($0) }
+        ))
+
+        #expect(deltas == [KeyboardInjector.scrollWheelStep, -KeyboardInjector.scrollWheelStep])
+        #expect(ButtonAction.scrollUp.displayName == "鼠标滚轮上")
+        #expect(ButtonAction.scrollDown.displayName == "鼠标滚轮下")
     }
 
     @Test func cyclePresetMovesInDeclaredOrderAndWrapsAround() {
