@@ -79,7 +79,7 @@ struct SettingsView: View {
     let updatesConfigured: Bool
     let onCheckForUpdates: () -> Void
 
-    @State private var selectedSection: SettingsSection = .connection
+    @State private var selectedSection: SettingsSection
     @State private var selectedRemoteButton: RemoteButton = .ok
     @State private var shortcutEditingTarget: ShortcutEditingTarget?
     @State private var voiceShortcutEditorPresented = false
@@ -98,12 +98,14 @@ struct SettingsView: View {
     init(
         model: BridgeAppModel,
         updatesConfigured: Bool = false,
+        showsAboutInitially: Bool = false,
         onCheckForUpdates: @escaping () -> Void = {}
     ) {
         self.model = model
         settings = model.settings
         self.updatesConfigured = updatesConfigured
         self.onCheckForUpdates = onCheckForUpdates
+        _selectedSection = State(initialValue: showsAboutInitially ? .about : .connection)
     }
 
     var body: some View {

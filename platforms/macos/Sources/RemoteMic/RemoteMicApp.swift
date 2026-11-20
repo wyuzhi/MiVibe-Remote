@@ -40,7 +40,7 @@ enum RemoteMicApp {
 
 @MainActor
 private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
-    NSMenuItemValidation {
+    NSMenuItemValidation, NSWindowDelegate {
     private let model = BridgeAppModel()
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
@@ -259,8 +259,12 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     @objc private func showSettings() {
+        showSettingsWindow(showingAbout: false)
+    }
+
+    private func showSettingsWindow(showingAbout: Bool) {
         if settingsWindowController == nil {
-            settingsWindowController = makeSettingsWindowController()
+            settingsWindowController = makeSettingsWindowController(showingAbout: showingAbout)
         }
         guard let windowController = settingsWindowController,
               let window = windowController.window else { return }
@@ -269,11 +273,12 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func makeSettingsWindowController() -> NSWindowController {
+    private func makeSettingsWindowController(showingAbout: Bool) -> NSWindowController {
         let hostingController = NSHostingController(
             rootView: SettingsView(
                 model: model,
-                updatesConfigured: appUpdater?.isConfigured == true
+                updatesConfigured: appUpdater?.isConfigured == true,
+                showsAboutInitially: showingAbout
             ) { [weak self] in
                 self?.checkForUpdates()
             }
@@ -288,9 +293,19 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 800, height: 650)
-        window.setFrameAutosaveName("RemoteMicSettings")
+        // Center first so a saved frame (restored by the autosave name) wins
+        // when the window is rebuilt after being closed.
         window.center()
+        window.setFrameAutosaveName("RemoteMicSettings")
+        window.delegate = self
         return NSWindowController(window: window)
+    }
+
+    /// Release the settings window and its SwiftUI tree once it closes;
+    /// showSettingsWindow(showingAbout:) rebuilds it on the next open.
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === settingsWindowController?.window else { return }
+        settingsWindowController = nil
     }
 
     @objc private func showLog() {
@@ -298,7 +313,7 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
     }
 
     @objc private func showAbout() {
-        showSettings()
+        showSettingsWindow(showingAbout: true)
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .showRemoteMicAbout, object: nil)
         }
