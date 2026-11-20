@@ -14,8 +14,8 @@ test "$(plutil -extract CFBundleName raw -o - "$PLIST")" = "MiRemoteV2ch"
 codesign --verify --deep --strict "$DRIVER"
 ARCHS="$(lipo -archs "$BINARY")"
 test "$ARCHS" = "arm64"
-xcrun vtool -show-build "$BINARY" | rg -q 'minos 15\.0'
-strings "$BINARY" | rg -qx 'MiRemoteV %ich'
-strings "$BINARY" | rg -qx 'MiRemoteV%ich_UID'
+xcrun vtool -show-build "$BINARY" | /usr/bin/grep -q 'minos 15\.0'
+strings "$BINARY" | /usr/bin/grep -qxF 'MiRemoteV %ich'
+strings "$BINARY" | /usr/bin/grep -qxF 'MiRemoteV%ich_UID'
 
 print "DOUBAO DRIVER VERIFY PASS: $DRIVER"
