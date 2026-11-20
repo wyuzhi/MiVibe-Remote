@@ -53,6 +53,48 @@ struct LocalPreset: Codable, Equatable, Identifiable {
     var secondaryButtonBindings: [String: [String: ConfiguredButtonAction]]
 }
 
+extension LocalPreset {
+    /// Same as the synthesized decoder, except that bindings with unknown
+    /// actions are skipped (see LossyDecodable) instead of failing the preset.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        voiceShortcutProfile = try container.decode(VoiceShortcutProfile.self, forKey: .voiceShortcutProfile)
+        customVoiceShortcut = try container.decodeIfPresent(
+            CustomKeyboardShortcut.self,
+            forKey: .customVoiceShortcut
+        )
+        customVoiceTriggerMode = try container.decode(
+            VoiceShortcutTriggerMode.self,
+            forKey: .customVoiceTriggerMode
+        )
+        buttonBindings = try container.decode(
+            [String: LossyDecodable<ButtonAction>].self,
+            forKey: .buttonBindings
+        ).compactMapValues(\.value)
+        buttonShortcuts = try container.decode(
+            [String: CustomKeyboardShortcut].self,
+            forKey: .buttonShortcuts
+        )
+        secondaryButtonBindings = try container.decode(
+            [String: [String: LossyDecodable<ConfiguredButtonAction>]].self,
+            forKey: .secondaryButtonBindings
+        ).mapValues { $0.compactMapValues(\.value) }
+    }
+}
+
+/// Decodes `Value`, or nil if this entry can't be decoded (for example a
+/// button action saved by a newer version), so one unknown entry doesn't
+/// discard a whole saved mapping or preset list.
+private struct LossyDecodable<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+}
+
 enum VoiceShortcutTriggerMode: String, CaseIterable, Codable, Equatable, Identifiable {
     case hold
     case toggle
@@ -240,7 +282,7 @@ final class AppSettings: ObservableObject {
 
         if
             let data = defaults.data(forKey: Keys.buttonBindings),
-            let decoded = try? JSONDecoder().decode([String: ButtonAction].self, from: data)
+            let decoded = Self.decodeActions(data)
         {
             let savedBindings = Self.defaultBindings.merging(
                 Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
@@ -267,10 +309,7 @@ final class AppSettings: ObservableObject {
 
         if
             let data = defaults.data(forKey: Keys.secondaryButtonBindings),
-            let decoded = try? JSONDecoder().decode(
-                [String: [String: ConfiguredButtonAction]].self,
-                from: data
-            )
+            let decoded = Self.decodeConfiguredActions(data)
         {
             secondaryButtonBindings = Dictionary(uniqueKeysWithValues: decoded.compactMap { buttonKey, bindings in
                 guard let button = RemoteButton(rawValue: buttonKey) else { return nil }
@@ -702,10 +741,22 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    private static func decodeActions(_ data: Data) -> [String: ButtonAction]? {
+        (try? JSONDecoder().decode([String: LossyDecodable<ButtonAction>].self, from: data))?
+            .compactMapValues(\.value)
+    }
+
+    private static func decodeConfiguredActions(
+        _ data: Data
+    ) -> [String: [String: ConfiguredButtonAction]]? {
+        (try? JSONDecoder().decode(
+            [String: [String: LossyDecodable<ConfiguredButtonAction>]].self,
+            from: data
+        ))?.mapValues { $0.compactMapValues(\.value) }
+    }
+
     private static func decodeBindings(_ data: Data?) -> [RemoteButton: ButtonAction]? {
-        guard let data,
-              let decoded = try? JSONDecoder().decode([String: ButtonAction].self, from: data)
-        else { return nil }
+        guard let data, let decoded = decodeActions(data) else { return nil }
         return decodeBindings(decoded)
     }
 
@@ -735,12 +786,7 @@ final class AppSettings: ObservableObject {
     private static func decodeSecondaryBindings(
         _ data: Data?
     ) -> [RemoteButton: [ButtonTrigger: ConfiguredButtonAction]] {
-        guard let data,
-              let decoded = try? JSONDecoder().decode(
-                  [String: [String: ConfiguredButtonAction]].self,
-                  from: data
-              )
-        else { return [:] }
+        guard let data, let decoded = decodeConfiguredActions(data) else { return [:] }
         return decodeSecondaryBindings(decoded)
     }
 

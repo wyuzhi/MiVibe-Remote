@@ -307,6 +307,43 @@ struct RemoteButtonsTests {
         #expect(restored.action(for: .power) == .openWeChat)
     }
 
+    @Test func savedMappingsSkipUnknownActionsInsteadOfResetting() throws {
+        let suiteName = "RemoteMicTests.unknownAction.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // Mappings saved by a build that knows an action this one doesn't.
+        defaults.set(
+            Data(#"{"ok":"escape","tv":"actionFromNewerVersion"}"#.utf8),
+            forKey: "buttonBindings"
+        )
+        defaults.set(
+            Data(#"""
+            {"menu":{"doubleClick":{"action":"returnKey"},
+                     "longPress":{"action":"actionFromNewerVersion"}}}
+            """#.utf8),
+            forKey: "secondaryButtonBindings"
+        )
+        defaults.set(
+            Data(#"""
+            [{"id":"\#(UUID().uuidString)","name":"写作",
+              "voiceShortcutProfile":"codex","customVoiceTriggerMode":"hold",
+              "buttonBindings":{"ok":"escape","tv":"actionFromNewerVersion"},
+              "buttonShortcuts":{},
+              "secondaryButtonBindings":{"menu":{"longPress":{"action":"actionFromNewerVersion"}}}}]
+            """#.utf8),
+            forKey: "localPresets"
+        )
+
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.action(for: .ok) == .escape)
+        #expect(settings.action(for: .tv) == AppSettings.defaultBindings[.tv])
+        #expect(settings.configuredAction(for: .menu, trigger: .doubleClick).action == .returnKey)
+        #expect(settings.configuredAction(for: .menu, trigger: .longPress) == .disabled)
+        #expect(settings.localPresets.map(\.name) == ["写作"])
+        #expect(settings.localPresets.first?.buttonBindings == ["ok": .escape])
+    }
+
     @Test func cyclePresetKeepsEveryConfiguredCycleTrigger() throws {
         let suiteName = "RemoteMicTests.cyclePreset.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
