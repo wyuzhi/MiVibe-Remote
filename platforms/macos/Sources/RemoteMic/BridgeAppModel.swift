@@ -854,6 +854,15 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 configuredDeviceUID: self.settings.selectedAudioDeviceUID,
                 availableDevices: self.audioDevices
             ) else {
+                // After the voice key is released, stop waiting for an output
+                // that may never come back (e.g. no virtual mic selected): drop
+                // the buffered audio and drain so the shortcut is released.
+                guard self.isStreaming else {
+                    self.voicePreRoll.reset()
+                    AppLogger.shared.write("VOICE PREROLL dropped reason=audio_unavailable_after_release")
+                    self.scheduleVoiceDrainAfterPacketSettle(generation: self.voiceStopGeneration)
+                    return
+                }
                 self.ensureAudioReadyForVoice()
                 self.audioOutput.setRemoteActive(true)
                 self.scheduleVoicePreRollRelease(generation: generation)
